@@ -4,32 +4,32 @@ export CLASSPATH=/usr/local/lib/antlr-*-complete.jar
 
 DOMAINNAME = oj.compilers.cpl.icu
 ANTLR = java -jar /usr/local/lib/antlr-*-complete.jar -listener -visitor -long-messages
+include Makefile.git
+
+DOMAINNAME = oj.compilers.cpl.icu
+ANTLR = java -jar /usr/local/lib/antlr-4.9.1-complete.jar -listener -visitor -long-messages
 JAVAC = javac -g
 JAVA = java
-
 
 PFILE = $(shell find . -name "SysYParser.g4")
 LFILE = $(shell find . -name "SysYLexer.g4")
 JAVAFILE = $(shell find . -name "*.java")
-ANTLRPATH = $(shell find /usr/local/lib -name "antlr-*-complete.jar")
+ANTLRPATH = /usr/local/lib/antlr-4.9.1-complete.jar
 
 compile: antlr
 	$(call git_commit,"make")
 	mkdir -p classes
-	$(JAVAC) -classpath $(ANTLRPATH) $(JAVAFILE) -d classes
+	$(JAVAC) -classpath $(ANTLRPATH):. $(JAVAFILE) -d classes
 
 run: compile
-	java -classpath ./classes:$(ANTLRPATH) Main $(FILEPATH)
-
+	$(JAVA) -classpath ./classes:$(ANTLRPATH) Main $(FILEPATH)
 
 antlr: $(LFILE) $(PFILE)
 	$(ANTLR) $(PFILE) $(LFILE)
 
-
 test: compile
 	$(call git_commit, "test")
-	nohup java -classpath ./classes:$(ANTLRPATH) Main ./tests/test1.sysy &
-
+	nohup $(JAVA) -classpath ./classes:$(ANTLRPATH) Main ./tests/test1.sysy &
 
 clean:
 	rm -f src/*.tokens
@@ -39,12 +39,8 @@ clean:
 	rm -rf out
 	rm -rf src/.antlr
 
-
 submit: clean
 	git gc
 	bash submit.sh
 
-
 .PHONY: compile antlr test run clean submit
-
-
