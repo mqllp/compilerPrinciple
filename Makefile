@@ -1,11 +1,5 @@
 include Makefile.git
 
-export CLASSPATH=/usr/local/lib/antlr-*-complete.jar
-
-DOMAINNAME = oj.compilers.cpl.icu
-ANTLR = java -jar /usr/local/lib/antlr-*-complete.jar -listener -visitor -long-messages
-include Makefile.git
-
 DOMAINNAME = oj.compilers.cpl.icu
 ANTLR = java -jar /usr/local/lib/antlr-4.9.1-complete.jar -listener -visitor -long-messages
 JAVAC = javac -g
