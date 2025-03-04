@@ -2,6 +2,8 @@ import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.Token;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Main {
 
@@ -20,42 +22,48 @@ public class Main {
         sysYLexer.removeErrorListeners();
         sysYLexer.addErrorListener(errorListener);
 
-        // 获取所有token并输出
+        // 收集所有token
+        List<Token> tokens = new ArrayList<>();
         Token token;
 
         while ((token = sysYLexer.nextToken()) != null && token.getType() != Token.EOF) {
-            // 跳过注释，这些被ANTLR标记为skip
             if (token.getChannel() != Token.HIDDEN_CHANNEL) {
-                // 处理整数常量 - 将十六进制和八进制转换为十进制
-                if (token.getType() == SysYLexer.INTEGER_CONST) {
-                    String text = token.getText();
+                tokens.add(token);
+            }
+        }
+
+        // 只有在没有错误的情况下才输出token
+        if (!errorListener.hasError()) {
+            for (Token t : tokens) {
+                if (t.getType() == SysYLexer.INTEGER_CONST) {
+                    String text = t.getText();
                     int value;
 
                     // 处理十六进制
                     if (text.startsWith("0x") || text.startsWith("0X")) {
                         value = Integer.parseInt(text.substring(2), 16);
                         System.err.println(
-                                SysYLexer.VOCABULARY.getSymbolicName(token.getType()) +
-                                        " " + value + " at Line " + token.getLine() + ".");
+                                SysYLexer.VOCABULARY.getSymbolicName(t.getType()) +
+                                        " " + value + " at Line " + t.getLine() + ".");
                     }
                     // 处理八进制
                     else if (text.startsWith("0") && text.length() > 1 && !text.startsWith("0x") && !text.startsWith("0X")) {
                         value = Integer.parseInt(text.substring(1), 8);
                         System.err.println(
-                                SysYLexer.VOCABULARY.getSymbolicName(token.getType()) +
-                                        " " + value + " at Line " + token.getLine() + ".");
+                                SysYLexer.VOCABULARY.getSymbolicName(t.getType()) +
+                                        " " + value + " at Line " + t.getLine() + ".");
                     }
                     // 处理十进制
                     else {
                         System.err.println(
-                                SysYLexer.VOCABULARY.getSymbolicName(token.getType()) +
-                                        " " + text + " at Line " + token.getLine() + ".");
+                                SysYLexer.VOCABULARY.getSymbolicName(t.getType()) +
+                                        " " + text + " at Line " + t.getLine() + ".");
                     }
                 } else {
                     // 输出其他token
                     System.err.println(
-                            SysYLexer.VOCABULARY.getSymbolicName(token.getType()) +
-                                    " " + token.getText() + " at Line " + token.getLine() + ".");
+                            SysYLexer.VOCABULARY.getSymbolicName(t.getType()) +
+                                    " " + t.getText() + " at Line " + t.getLine() + ".");
                 }
             }
         }
