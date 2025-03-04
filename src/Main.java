@@ -22,7 +22,6 @@ public class Main {
 
         // 获取所有token并输出
         Token token;
-        boolean hasError = false;
 
         while ((token = sysYLexer.nextToken()) != null && token.getType() != Token.EOF) {
             // 跳过注释，这些被ANTLR标记为skip
@@ -35,28 +34,28 @@ public class Main {
                     // 处理十六进制
                     if (text.startsWith("0x") || text.startsWith("0X")) {
                         value = Integer.parseInt(text.substring(2), 16);
-                        System.err.println(token.getLine() + " " +
+                        System.err.println(
                                 SysYLexer.VOCABULARY.getSymbolicName(token.getType()) +
-                                " " + value);
+                                        " " + value + " at Line " + token.getLine() + ".");
                     }
                     // 处理八进制
                     else if (text.startsWith("0") && text.length() > 1 && !text.startsWith("0x") && !text.startsWith("0X")) {
                         value = Integer.parseInt(text.substring(1), 8);
-                        System.err.println(token.getLine() + " " +
+                        System.err.println(
                                 SysYLexer.VOCABULARY.getSymbolicName(token.getType()) +
-                                " " + value);
+                                        " " + value + " at Line " + token.getLine() + ".");
                     }
                     // 处理十进制
                     else {
-                        System.err.println(token.getLine() + " " +
+                        System.err.println(
                                 SysYLexer.VOCABULARY.getSymbolicName(token.getType()) +
-                                " " + text);
+                                        " " + text + " at Line " + token.getLine() + ".");
                     }
                 } else {
                     // 输出其他token
-                    System.err.println(token.getLine() + " " +
+                    System.err.println(
                             SysYLexer.VOCABULARY.getSymbolicName(token.getType()) +
-                            " " + token.getText());
+                                    " " + token.getText() + " at Line " + token.getLine() + ".");
                 }
             }
         }
