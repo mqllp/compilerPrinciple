@@ -25,7 +25,7 @@ public class SysYLexerErrorListener extends BaseErrorListener {
         }
 
         // Format the error message
-        System.err.println("Error type A at Line " + line + ": Mysterious character \"" + errorChar + "\"");
+        System.out.println("Error type A at Line " + line + ": Mysterious character \"" + errorChar + "\"");
     }
 
     public boolean hasError() {

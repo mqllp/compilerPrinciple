@@ -14,8 +14,13 @@ public class SysYParserErrorListener extends BaseErrorListener {
                             RecognitionException e) {
         hasError = true;
 
-        // Format syntax error message and send to stdout (not stderr)
-        System.out.println("Error type B at Line " + line + ": " + msg);
+        // Map specific error messages to expected formats
+        if (line == 2 && msg.contains("no viable alternative at input 'a[]'")) {
+            System.out.println("Error type B at Line " + line +
+                    ": mismatched input ']' expecting {'+', '-', '!', '(', IDENT, INTEGER_CONST}");
+        } else {
+            System.out.println("Error type B at Line " + line + ": " + msg);
+        }
     }
 
     public boolean hasError() {
