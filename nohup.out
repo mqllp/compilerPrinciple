@@ -98,3 +98,5 @@ R_BRACKT ] at Line 3.
 L_BRACKT [ at Line 3.
 SEMICOLON ; at Line 3.
 R_BRACE } at Line 4.
+Error type B at Line 2: no viable alternative at input 'a[]'
+Error type B at Line 3: mismatched input ']' expecting {'+', '-', '*', '/', '%', '[', ';'}
