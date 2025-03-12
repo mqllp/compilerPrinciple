@@ -171,15 +171,9 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
         if (ctx.lVal() != null && ctx.ASSIGN() != null) {
             // Assignment statement
             sb.append(visit(ctx.lVal())).append(" = ").append(visit(ctx.exp())).append(";\n");
-        } else if (ctx.SEMICOLON() != null && ctx.exp() == null) {
+        } else if (ctx.SEMICOLON() != null && ctx.exp() == null && ctx.RETURN() == null) {
             // Empty statement
             sb.append(";\n");
-        } else if (ctx.exp() != null && ctx.SEMICOLON() != null) {
-            // Expression statement
-            sb.append(visit(ctx.exp())).append(";\n");
-        } else if (ctx.block() != null) {
-            // Block statement
-            sb.append(visit(ctx.block())).append("\n");
         } else if (ctx.RETURN() != null) {
             // Return statement
             sb.append("return");
@@ -187,6 +181,12 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                 sb.append(" ").append(visit(ctx.exp()));
             }
             sb.append(";\n");
+        } else if (ctx.exp() != null && ctx.SEMICOLON() != null) {
+            // Expression statement
+            sb.append(visit(ctx.exp())).append(";\n");
+        } else if (ctx.block() != null) {
+            // Block statement
+            sb.append(visit(ctx.block())).append("\n");
         } else if (ctx.IF() != null) {
             // If statement
             sb.append("if (").append(visit(ctx.cond())).append(") ");
