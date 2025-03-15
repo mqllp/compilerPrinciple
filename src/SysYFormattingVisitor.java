@@ -146,7 +146,8 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
     @Override
     public String visitBlock(SysYParser.BlockContext ctx) {
         StringBuilder sb = new StringBuilder();
-        sb.append("{\n");
+        // Remove any extra spaces before the opening brace
+        sb.append("{").append("\n");
         indentLevel++;
 
         for (SysYParser.BlockItemContext item : ctx.blockItem()) {
@@ -192,7 +193,13 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             sb.append("if (").append(visit(ctx.cond())).append(") ");
 
             if (ctx.stmt(0).block() != null) {
-                sb.append(visit(ctx.stmt(0)));
+                // For blocks starting with "if (...) {" - remove spaces before brace
+                String blockStr = visit(ctx.stmt(0));
+                // Replace any leading spaces before the brace
+                if (blockStr.startsWith("    {")) {
+                    blockStr = "{" + blockStr.substring(5);
+                }
+                sb.append(blockStr);
             } else {
                 sb.append("\n");
                 indentLevel++;
@@ -206,10 +213,20 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                 // Handle else if special case
                 if (ctx.stmt(1).IF() != null) {
                     sb.append(" "); // Just one space between else and if
-                    sb.append(visit(ctx.stmt(1)));
+                    String ifStmt = visit(ctx.stmt(1));
+                    // Remove indentation from nested if
+                    if (ifStmt.startsWith(getIndent())) {
+                        ifStmt = ifStmt.substring(getIndent().length());
+                    }
+                    sb.append(ifStmt);
                 } else if (ctx.stmt(1).block() != null) {
                     sb.append(" "); // Just one space between else and {
-                    sb.append(visit(ctx.stmt(1)));
+                    String blockStr = visit(ctx.stmt(1));
+                    // Replace any leading spaces before the brace
+                    if (blockStr.startsWith("    {")) {
+                        blockStr = "{" + blockStr.substring(5);
+                    }
+                    sb.append(blockStr);
                 } else {
                     sb.append("\n");
                     indentLevel++;
@@ -217,7 +234,8 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                     indentLevel--;
                 }
             }
-        } else if (ctx.WHILE() != null) {
+        } // Rest of the method remains unchanged
+        else if (ctx.WHILE() != null) {
             // While statement
             sb.append("while (").append(visit(ctx.cond())).append(") ");
             if (ctx.stmt(0).block() != null) {
