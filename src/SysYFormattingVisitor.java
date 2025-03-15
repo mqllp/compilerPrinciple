@@ -401,6 +401,22 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
     }
 
     @Override
+    public String visitConstDef(SysYParser.ConstDefContext ctx) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(ctx.IDENT().getText());
+
+        for (SysYParser.ConstExpContext expCtx : ctx.constExp()) {
+            sb.append("[").append(visit(expCtx)).append("]");
+        }
+
+        if (ctx.ASSIGN() != null) {
+            sb.append(" = ").append(visit(ctx.constInitVal()));
+        }
+
+        return sb.toString();
+    }
+
+    @Override
     public String visitConstExp(SysYParser.ConstExpContext ctx) {
         return visit(ctx.exp());
     }
