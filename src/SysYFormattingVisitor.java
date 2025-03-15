@@ -189,7 +189,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             sb.append(visit(ctx.block())).append("\n");
         } else if (ctx.IF() != null) {
             // If statement
-            sb.append("if (").append(visit(ctx.cond())).append(") ");
+            sb.append("if (").append(visit(ctx.cond())).append(")     ");
 
             if (ctx.stmt(0).block() != null) {
                 sb.append(visit(ctx.stmt(0)));
@@ -201,13 +201,13 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             }
 
             if (ctx.ELSE() != null) {
-                sb.append(getIndent()).append("else");
+                sb.append(getIndent()).append("else     ");
 
                 // Handle else if special case
                 if (ctx.stmt(1).IF() != null) {
-                    sb.append(" ").append(visit(ctx.stmt(1)));
+                    sb.append(visit(ctx.stmt(1)));
                 } else if (ctx.stmt(1).block() != null) {
-                    sb.append(" ").append(visit(ctx.stmt(1)));
+                    sb.append(visit(ctx.stmt(1)));
                 } else {
                     sb.append("\n");
                     indentLevel++;
