@@ -201,12 +201,14 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             }
 
             if (ctx.ELSE() != null) {
-                sb.append(getIndent()).append("else ");
+                sb.append(getIndent()).append("else");
 
                 // Handle else if special case
                 if (ctx.stmt(1).IF() != null) {
+                    sb.append(" "); // Just one space between else and if
                     sb.append(visit(ctx.stmt(1)));
                 } else if (ctx.stmt(1).block() != null) {
+                    sb.append(" "); // Just one space between else and {
                     sb.append(visit(ctx.stmt(1)));
                 } else {
                     sb.append("\n");
