@@ -26,9 +26,13 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             ParseTree child = ctx.getChild(i);
             if (child instanceof SysYParser.FuncDefContext) {
                 if (!firstFunc) {
-                    sb.append("\n");
+                    sb.append("\n\n"); // Add an extra newline before function definitions
                 }
                 firstFunc = false;
+            } else if (child instanceof SysYParser.DeclContext) {
+                if (i > 0 && ctx.getChild(i - 1) instanceof SysYParser.DeclContext) {
+                    sb.append("\n"); // Add a newline between declarations
+                }
             }
             sb.append(visit(child));
         }
