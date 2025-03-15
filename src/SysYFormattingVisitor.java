@@ -190,10 +190,10 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             sb.append(visit(ctx.block())).append("\n");
         } else if (ctx.IF() != null) {
             // If statement
-            sb.append("if (").append(visit(ctx.cond())).append(") ");
+            sb.append("if (").append(visit(ctx.cond())).append(")");  // No space after condition
 
             if (ctx.stmt(0).block() != null) {
-                sb.append("{\n");
+                sb.append(" {\n");  // Space + brace for block statements
                 indentLevel++;
 
                 for (int i = 0; i < ctx.stmt(0).block().blockItem().size(); i++) {
@@ -203,11 +203,14 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                 indentLevel--;
                 sb.append(getIndent()).append("}");
             } else {
-                // For non-block statements, don't add extra newline
+                // For non-block statements, add newline after the parenthesis
+                sb.append("\n");  // Add newline after condition
                 indentLevel++;
                 sb.append(visit(ctx.stmt(0)));
                 indentLevel--;
             }
+
+            // Rest of the method remains the same
 
             if (ctx.ELSE() != null) {
                 sb.append("\n").append(getIndent()).append("else");
