@@ -201,11 +201,10 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                 indentLevel--;
                 sb.append(getIndent()).append("}");
             } else {
-                // For non-block statements, don't add extra newline
                 sb.append("\n");
                 indentLevel++;
-                // Remove trailing newline from statement if it exists
                 String stmtStr = visit(ctx.stmt(0));
+                // Remove trailing newline to avoid blank line
                 if (stmtStr.endsWith("\n")) {
                     stmtStr = stmtStr.substring(0, stmtStr.length() - 1);
                 }
@@ -214,6 +213,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             }
 
             if (ctx.ELSE() != null) {
+                // No extra newline before else
                 sb.append("\n").append(getIndent()).append("else");
 
                 // Handle else if special case
@@ -224,6 +224,8 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                         ifStmt = ifStmt.substring(getIndent().length());
                     }
                     sb.append(ifStmt);
+                    // Don't add extra newline here - let nested if handle it
+                    return sb.toString();
                 } else if (ctx.stmt(1).block() != null) {
                     sb.append(" {\n");
                     indentLevel++;
@@ -233,7 +235,6 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                     indentLevel--;
                     sb.append(getIndent()).append("}");
                 } else {
-                    // For non-block statements, don't add extra newlines
                     sb.append("\n");
                     indentLevel++;
                     String elseStmt = visit(ctx.stmt(1));
@@ -244,20 +245,20 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                     indentLevel--;
                 }
             }
-            sb.append("\n"); // Add one newline at the end of entire if-else construct
+
+            // Add a newline only if this is not a nested if-else within another if-else
+            sb.append("\n");
         } else if (ctx.WHILE() != null) {
-            // While statement handling remains unchanged
+            // While statement handling remains the same
             sb.append("while (").append(visit(ctx.cond())).append(") ");
             if (ctx.stmt(0).block() != null) {
                 sb.append("{\n");
                 indentLevel++;
-
                 for (int i = 0; i < ctx.stmt(0).block().blockItem().size(); i++) {
                     sb.append(visit(ctx.stmt(0).block().blockItem(i)));
                 }
-
                 indentLevel--;
-                sb.append(getIndent()).append("}");
+                sb.append(getIndent()).append("}\n");
             } else {
                 sb.append("\n");
                 indentLevel++;
