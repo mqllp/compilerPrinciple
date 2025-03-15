@@ -201,7 +201,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                 }
 
                 indentLevel--;
-                sb.append(getIndent()).append("}");
+                sb.append(getIndent()).append("}\n");
             } else {
                 sb.append("\n");
                 indentLevel++;
