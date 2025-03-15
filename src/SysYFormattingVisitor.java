@@ -190,10 +190,10 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             sb.append(visit(ctx.block())).append("\n");
         } else if (ctx.IF() != null) {
             // If statement
-            sb.append("if (").append(visit(ctx.cond())).append(")");
+            sb.append("if (").append(visit(ctx.cond())).append(")");  // No space after condition
 
             if (ctx.stmt(0).block() != null) {
-                sb.append(" {\n");
+                sb.append(" {\n");  // Space + brace for block statements
                 indentLevel++;
 
                 for (int i = 0; i < ctx.stmt(0).block().blockItem().size(); i++) {
@@ -201,21 +201,25 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                 }
 
                 indentLevel--;
-                sb.append(getIndent()).append("}\n");
+                sb.append(getIndent()).append("}");
             } else {
-                sb.append("\n");
+                // For non-block statements, add newline after the parenthesis
+                sb.append("\n");  // Add newline after condition
                 indentLevel++;
                 sb.append(visit(ctx.stmt(0)));
                 indentLevel--;
             }
 
-            if (ctx.ELSE() != null) {
-                // Don't add extra newline - directly append else
-                sb.append(getIndent()).append("else");
+            // Rest of the method remains the same
 
+            if (ctx.ELSE() != null) {
+                sb.append("\n").append(getIndent()).append("else");
+
+                // Handle else if special case
                 if (ctx.stmt(1).IF() != null) {
-                    sb.append(" ");
+                    sb.append(" "); // Just one space between else and if
                     String ifStmt = visit(ctx.stmt(1));
+                    // Remove indentation from nested if
                     if (ifStmt.startsWith(getIndent())) {
                         ifStmt = ifStmt.substring(getIndent().length());
                     }
@@ -229,14 +233,15 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                     }
 
                     indentLevel--;
-                    sb.append(getIndent()).append("}\n");
+                    sb.append(getIndent()).append("}\n"); // Add newline after closing brace
                 } else {
+                    // For non-block statements
                     indentLevel++;
                     sb.append(visit(ctx.stmt(1)));
                     indentLevel--;
                 }
             } else {
-                sb.append("\n");
+                sb.append("\n"); // Add newline after if statement without else
             }
         } else if (ctx.WHILE() != null) {
             // While statement handling remains unchanged
