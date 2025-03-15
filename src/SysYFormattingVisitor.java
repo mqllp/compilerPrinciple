@@ -181,7 +181,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             if (ctx.exp() != null) {
                 sb.append(" ").append(visit(ctx.exp()));
             }
-            sb.append(";\n");
+            sb.append(";");
         } else if (ctx.exp() != null && ctx.SEMICOLON() != null) {
             // Expression statement
             sb.append(visit(ctx.exp())).append(";\n");
