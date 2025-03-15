@@ -1,1 +1,18 @@
-const int kMax=1000; const int kMod=1000000007;  void test1(int x,int y) {int a=0;  int b[ 2][4 ]= {{1,2,3,4}, { 5 , 6, 7 , 8 } };if(a > 3){return;}else if (b[ 0 ][ 2 ]<=4){         while (1) {             a = 4 % 0;         }     }     else {         a = -+!a;     } }  int main() { {}     int d = gcd(75, 125);     return d; }
+const int a = 1;int b = 2;int A[10] = {8, 7, 4};
+void print(int x) {}
+int func() {int c;
+{print(a);
+    if (cond) { c = a + b;
+{
+    // this is a comment
+}
+/*
+ This is also a comment
+*/
+    }
+else if (cond2) {
+    return;
+}
+    else
+        c = 1;
+}return -3;}
