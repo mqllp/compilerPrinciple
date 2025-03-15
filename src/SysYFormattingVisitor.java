@@ -203,7 +203,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                 indentLevel--;
                 sb.append(getIndent()).append("}");
             } else {
-                sb.append("\n");
+                // For non-block statements, don't add extra newline
                 indentLevel++;
                 sb.append(visit(ctx.stmt(0)));
                 indentLevel--;
@@ -230,16 +230,18 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                     }
 
                     indentLevel--;
-                    sb.append(getIndent()).append("}");
+                    sb.append(getIndent()).append("}\n"); // Add newline after closing brace
                 } else {
-                    sb.append("\n");
+                    // For non-block statements
                     indentLevel++;
                     sb.append(visit(ctx.stmt(1)));
                     indentLevel--;
                 }
+            } else {
+                sb.append("\n"); // Add newline after if statement without else
             }
         } else if (ctx.WHILE() != null) {
-            // While statement
+            // While statement handling remains unchanged
             sb.append("while (").append(visit(ctx.cond())).append(") ");
             if (ctx.stmt(0).block() != null) {
                 sb.append("{\n");
@@ -265,6 +267,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
 
         return sb.toString();
     }
+
     @Override
     public String visitExp(SysYParser.ExpContext ctx) {
         return visit(ctx.addExp());
