@@ -2,7 +2,7 @@ import org.antlr.v4.runtime.tree.ParseTree;
 
 public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
     private int indentLevel = 0;
-    private final String INDENT = "    ";
+    private final String INDENT = "\t";
 
     private String getIndent() {
         StringBuilder sb = new StringBuilder();
