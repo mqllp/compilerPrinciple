@@ -181,7 +181,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             if (ctx.exp() != null) {
                 sb.append(" ").append(visit(ctx.exp()));
             }
-            sb.append(";");
+            sb.append(";\n");
         } else if (ctx.exp() != null && ctx.SEMICOLON() != null) {
             // Expression statement
             sb.append(visit(ctx.exp())).append(";\n");
@@ -190,27 +190,28 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             sb.append(visit(ctx.block())).append("\n");
         } else if (ctx.IF() != null) {
             // If statement
-            sb.append("if (").append(visit(ctx.cond())).append(")");  // No space after condition
+            sb.append("if (").append(visit(ctx.cond())).append(")");
 
             if (ctx.stmt(0).block() != null) {
-                sb.append(" {\n");  // Space + brace for block statements
+                sb.append(" {\n");
                 indentLevel++;
-
                 for (int i = 0; i < ctx.stmt(0).block().blockItem().size(); i++) {
                     sb.append(visit(ctx.stmt(0).block().blockItem(i)));
                 }
-
                 indentLevel--;
                 sb.append(getIndent()).append("}");
             } else {
-                // For non-block statements, add newline after the parenthesis
-                sb.append("\n");  // Add newline after condition
+                // For non-block statements, don't add extra newline
+                sb.append("\n");
                 indentLevel++;
-                sb.append(visit(ctx.stmt(0)));
+                // Remove trailing newline from statement if it exists
+                String stmtStr = visit(ctx.stmt(0));
+                if (stmtStr.endsWith("\n")) {
+                    stmtStr = stmtStr.substring(0, stmtStr.length() - 1);
+                }
+                sb.append(stmtStr);
                 indentLevel--;
             }
-
-            // Rest of the method remains the same
 
             if (ctx.ELSE() != null) {
                 sb.append("\n").append(getIndent()).append("else");
@@ -219,7 +220,6 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                 if (ctx.stmt(1).IF() != null) {
                     sb.append(" "); // Just one space between else and if
                     String ifStmt = visit(ctx.stmt(1));
-                    // Remove indentation from nested if
                     if (ifStmt.startsWith(getIndent())) {
                         ifStmt = ifStmt.substring(getIndent().length());
                     }
@@ -227,22 +227,24 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                 } else if (ctx.stmt(1).block() != null) {
                     sb.append(" {\n");
                     indentLevel++;
-
                     for (int i = 0; i < ctx.stmt(1).block().blockItem().size(); i++) {
                         sb.append(visit(ctx.stmt(1).block().blockItem(i)));
                     }
-
                     indentLevel--;
-                    sb.append(getIndent()).append("}\n"); // Add newline after closing brace
+                    sb.append(getIndent()).append("}");
                 } else {
-                    // For non-block statements
+                    // For non-block statements, don't add extra newlines
+                    sb.append("\n");
                     indentLevel++;
-                    sb.append(visit(ctx.stmt(1)));
+                    String elseStmt = visit(ctx.stmt(1));
+                    if (elseStmt.endsWith("\n")) {
+                        elseStmt = elseStmt.substring(0, elseStmt.length() - 1);
+                    }
+                    sb.append(elseStmt);
                     indentLevel--;
                 }
-            } else {
-                sb.append("\n"); // Add newline after if statement without else
             }
+            sb.append("\n"); // Add one newline at the end of entire if-else construct
         } else if (ctx.WHILE() != null) {
             // While statement handling remains unchanged
             sb.append("while (").append(visit(ctx.cond())).append(") ");
