@@ -26,7 +26,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             ParseTree child = ctx.getChild(i);
             if (child instanceof SysYParser.FuncDefContext) {
                 if (!firstFunc) {
-                    sb.append("\n");
+                    sb.append("\n\n");
                 }
                 firstFunc = false;
             }
@@ -114,7 +114,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
     @Override
     public String visitFuncDef(SysYParser.FuncDefContext ctx) {
         StringBuilder sb = new StringBuilder();
-        sb.append(visit(ctx.funcType())).append(" ");
+        sb.append("\n").append(visit(ctx.funcType())).append(" ");
         sb.append(ctx.IDENT().getText()).append("(");
 
         if (ctx.funcFParams() != null) {
