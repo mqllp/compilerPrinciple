@@ -2,7 +2,7 @@ import org.antlr.v4.runtime.tree.ParseTree;
 
 public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
     private int indentLevel = 0;
-    private final String INDENT = "\t";
+    private final String INDENT = "    ";
 
     private String getIndent() {
         StringBuilder sb = new StringBuilder();
@@ -189,7 +189,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             sb.append(visit(ctx.block())).append("\n");
         } else if (ctx.IF() != null) {
             // If statement
-            sb.append("if (").append(visit(ctx.cond())).append(")     ");
+            sb.append("if (").append(visit(ctx.cond())).append(") ");
 
             if (ctx.stmt(0).block() != null) {
                 sb.append(visit(ctx.stmt(0)));
@@ -201,7 +201,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             }
 
             if (ctx.ELSE() != null) {
-                sb.append(getIndent()).append("else     ");
+                sb.append(getIndent()).append("else ");
 
                 // Handle else if special case
                 if (ctx.stmt(1).IF() != null) {
