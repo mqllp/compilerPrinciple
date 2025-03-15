@@ -193,13 +193,15 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             sb.append("if (").append(visit(ctx.cond())).append(") ");
 
             if (ctx.stmt(0).block() != null) {
-                // For blocks starting with "if (...) {" - remove spaces before brace
-                String blockStr = visit(ctx.stmt(0));
-                // Replace any leading spaces before the brace
-                if (blockStr.startsWith("    {")) {
-                    blockStr = "{" + blockStr.substring(5);
+                sb.append("{\n");
+                indentLevel++;
+
+                for (int i = 0; i < ctx.stmt(0).block().blockItem().size(); i++) {
+                    sb.append(visit(ctx.stmt(0).block().blockItem(i)));
                 }
-                sb.append(blockStr);
+
+                indentLevel--;
+                sb.append(getIndent()).append("}");
             } else {
                 sb.append("\n");
                 indentLevel++;
@@ -208,7 +210,7 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
             }
 
             if (ctx.ELSE() != null) {
-                sb.append(getIndent()).append("else");
+                sb.append("\n").append(getIndent()).append("else");
 
                 // Handle else if special case
                 if (ctx.stmt(1).IF() != null) {
@@ -220,13 +222,15 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                     }
                     sb.append(ifStmt);
                 } else if (ctx.stmt(1).block() != null) {
-                    sb.append(" "); // Just one space between else and {
-                    String blockStr = visit(ctx.stmt(1));
-                    // Replace any leading spaces before the brace
-                    if (blockStr.startsWith("    {")) {
-                        blockStr = "{" + blockStr.substring(5);
+                    sb.append(" {\n");
+                    indentLevel++;
+
+                    for (int i = 0; i < ctx.stmt(1).block().blockItem().size(); i++) {
+                        sb.append(visit(ctx.stmt(1).block().blockItem(i)));
                     }
-                    sb.append(blockStr);
+
+                    indentLevel--;
+                    sb.append(getIndent()).append("}");
                 } else {
                     sb.append("\n");
                     indentLevel++;
@@ -234,12 +238,19 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
                     indentLevel--;
                 }
             }
-        } // Rest of the method remains unchanged
-        else if (ctx.WHILE() != null) {
+        } else if (ctx.WHILE() != null) {
             // While statement
             sb.append("while (").append(visit(ctx.cond())).append(") ");
             if (ctx.stmt(0).block() != null) {
-                sb.append(visit(ctx.stmt(0)));
+                sb.append("{\n");
+                indentLevel++;
+
+                for (int i = 0; i < ctx.stmt(0).block().blockItem().size(); i++) {
+                    sb.append(visit(ctx.stmt(0).block().blockItem(i)));
+                }
+
+                indentLevel--;
+                sb.append(getIndent()).append("}");
             } else {
                 sb.append("\n");
                 indentLevel++;
@@ -254,7 +265,6 @@ public class SysYFormattingVisitor extends SysYParserBaseVisitor<String> {
 
         return sb.toString();
     }
-
     @Override
     public String visitExp(SysYParser.ExpContext ctx) {
         return visit(ctx.addExp());
