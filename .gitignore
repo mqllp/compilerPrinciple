@@ -1,5 +1,6 @@
 /src/*
 !/src/*.java
+!/src/**/*.java
 !/src/*.g4
 /src/*Lexer.java
 /src/*Parser.java 
