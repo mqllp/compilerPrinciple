@@ -1,4 +1,6 @@
 /src/*
+!/src/type/
+!/src/symbol/
 !/src/*.java
 !/src/**/*.java
 !/src/*.g4
