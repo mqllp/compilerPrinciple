@@ -34,6 +34,10 @@ public class TypeChecker extends SysYParserBaseListener {
 
     private void reportError(int errorType, Token token, String message) {
         hasError = true;
+        // Add period at the end of the message if it doesn't have one
+        if (!message.endsWith(".")) {
+            message += ".";
+        }
         SemanticError error = new SemanticError(errorType, token.getLine(), message);
         errors.add(error);
         System.err.println(error);
@@ -213,8 +217,8 @@ public class TypeChecker extends SysYParserBaseListener {
             Type expType = checkExp(ctx.exp());
 
             if (lvalType != null && expType != null && !lvalType.isEqual(expType)) {
-                reportError(SemanticError.TYPE_MISMATCH, ctx.ASSIGN().getSymbol(),
-                        "Type mismatch in assignment");
+                reportError(SemanticError.TYPE_MISMATCH_ASSIGNMENT, ctx.ASSIGN().getSymbol(),
+                        "type.Type mismatched for assignment");
             }
         }
 
@@ -224,12 +228,12 @@ public class TypeChecker extends SysYParserBaseListener {
                 Type returnType = checkExp(ctx.exp());
                 if (returnType != null && currentFunctionReturnType != null &&
                         !returnType.isEqual(currentFunctionReturnType)) {
-                    reportError(SemanticError.TYPE_MISMATCH, ctx.RETURN().getSymbol(),
-                            "Return type mismatch");
+                    reportError(SemanticError.TYPE_MISMATCH_RETURN, ctx.RETURN().getSymbol(),
+                            "type.Type mismatched for return");
                 }
             } else if (currentFunctionReturnType != null && !currentFunctionReturnType.isEqual(VoidType.instance)) {
-                reportError(SemanticError.TYPE_MISMATCH, ctx.RETURN().getSymbol(),
-                        "Return type mismatch");
+                reportError(SemanticError.TYPE_MISMATCH_RETURN, ctx.RETURN().getSymbol(),
+                        "type.Type mismatched for return");
             }
         }
 
@@ -274,15 +278,15 @@ public class TypeChecker extends SysYParserBaseListener {
             for (SysYParser.ExpContext exp : ctx.exp()) {
                 Type indexType = checkExp(exp);
                 if (indexType == null || !indexType.isEqual(IntType.instance)) {
-                    reportError(SemanticError.TYPE_MISMATCH, exp.getStart(),
+                    reportError(SemanticError.TYPE_MISMATCH_OPERANDS, exp.getStart(),
                             "Array index must be an integer");
                 }
 
                 if (type.getKind() == Type.TypeKind.ARRAY) {
                     type = ((ArrayType) type).getElementType();
                 } else {
-                    reportError(SemanticError.ARRAY_ACCESS_ERROR, exp.getStart(),
-                            "Too many array dimensions");
+                    reportError(SemanticError.NOT_AN_ARRAY, ctx.IDENT().getSymbol(),
+                            "Not an array: " + name);
                     return null;
                 }
             }
@@ -308,14 +312,14 @@ public class TypeChecker extends SysYParserBaseListener {
         }
 
         if (!leftType.isEqual(IntType.instance)) {
-            reportError(SemanticError.TYPE_MISMATCH, ctx.getStart(),
-                    "Operand type mismatch");
+            reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.getStart(),
+                    "type.Type mismatched for operands");
             return null;
         }
 
         if (!rightType.isEqual(IntType.instance)) {
-            reportError(SemanticError.TYPE_MISMATCH, ctx.mulExp().getStart(),
-                    "Operand type mismatch");
+            reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.mulExp().getStart(),
+                    "type.Type mismatched for operands");
             return null;
         }
 
@@ -335,13 +339,13 @@ public class TypeChecker extends SysYParserBaseListener {
         }
 
         if (!leftType.isEqual(IntType.instance)) {
-            reportError(SemanticError.TYPE_MISMATCH, ctx.getStart(),
+            reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.getStart(),
                     "Operand type mismatch");
             return null;
         }
 
         if (!rightType.isEqual(IntType.instance)) {
-            reportError(SemanticError.TYPE_MISMATCH, ctx.unaryExp().getStart(),
+            reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.unaryExp().getStart(),
                     "Operand type mismatch");
             return null;
         }
@@ -378,7 +382,7 @@ public class TypeChecker extends SysYParserBaseListener {
 
                 if (params.size() != paramTypes.size()) {
                     reportError(SemanticError.FUNCTION_PARAM_MISMATCH, ctx.IDENT().getSymbol(),
-                            "Function parameter count mismatch");
+                            "Function is not applicable for arguments");
                     return functionType.getReturnType();
                 }
 
@@ -386,7 +390,7 @@ public class TypeChecker extends SysYParserBaseListener {
                     Type argType = checkExp(params.get(i).exp());
                     if (argType != null && !argType.isEqual(paramTypes.get(i))) {
                         reportError(SemanticError.FUNCTION_PARAM_MISMATCH, params.get(i).getStart(),
-                                "Function parameter type mismatch");
+                                "Function is not applicable for arguments");
                     }
                 }
             } else if (!functionType.getParamTypes().isEmpty()) {
@@ -400,7 +404,7 @@ public class TypeChecker extends SysYParserBaseListener {
             Type operandType = checkUnaryExp(ctx.unaryExp());
 
             if (operandType != null && !operandType.isEqual(IntType.instance)) {
-                reportError(SemanticError.TYPE_MISMATCH, ctx.unaryExp().getStart(),
+                reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.unaryExp().getStart(),
                         "Operand type mismatch");
                 return null;
             }
@@ -451,7 +455,7 @@ public class TypeChecker extends SysYParserBaseListener {
 
             if (leftType != null && rightType != null &&
                     !leftType.isEqual(rightType)) {
-                reportError(SemanticError.TYPE_MISMATCH, ctx.getStart(),
+                reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.getStart(),
                         "Type mismatch in equality comparison");
             }
 
@@ -468,12 +472,12 @@ public class TypeChecker extends SysYParserBaseListener {
             Type rightType = checkAddExp(ctx.addExp());
 
             if (leftType != null && !leftType.isEqual(IntType.instance)) {
-                reportError(SemanticError.TYPE_MISMATCH, ctx.getStart(),
+                reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.getStart(),
                         "Operand type mismatch");
             }
 
             if (rightType != null && !rightType.isEqual(IntType.instance)) {
-                reportError(SemanticError.TYPE_MISMATCH, ctx.addExp().getStart(),
+                reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.addExp().getStart(),
                         "Operand type mismatch");
             }
 
@@ -497,14 +501,14 @@ public class TypeChecker extends SysYParserBaseListener {
         if (ctx.exp() != null) {
             Type initType = checkExp(ctx.exp());
             if (initType != null && expectedType != null && !expectedType.isEqual(initType)) {
-                reportError(SemanticError.TYPE_MISMATCH, ctx.getStart(),
+                reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.getStart(),
                         "Initialization type mismatch");
             }
         } else if (expectedType.getKind() == Type.TypeKind.ARRAY) {
             // Array initialization - we should check each element, but the spec says
             // we don't need to check array initialization values
         } else {
-            reportError(SemanticError.TYPE_MISMATCH, ctx.getStart(),
+            reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.getStart(),
                     "Initialization type mismatch");
         }
     }
@@ -513,14 +517,14 @@ public class TypeChecker extends SysYParserBaseListener {
         if (ctx.constExp() != null) {
             Type initType = checkExp(ctx.constExp().exp());
             if (initType != null && expectedType != null && !expectedType.isEqual(initType)) {
-                reportError(SemanticError.TYPE_MISMATCH, ctx.getStart(),
+                reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.getStart(),
                         "Initialization type mismatch");
             }
         } else if (expectedType.getKind() == Type.TypeKind.ARRAY) {
             // Array initialization - we should check each element, but the spec says
             // we don't need to check array initialization values
         } else {
-            reportError(SemanticError.TYPE_MISMATCH, ctx.getStart(),
+            reportError(SemanticError.TYPE_MISMATCH_OPERANDS, ctx.getStart(),
                     "Initialization type mismatch");
         }
     }
