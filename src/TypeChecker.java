@@ -213,6 +213,16 @@ public class TypeChecker extends SysYParserBaseListener {
     public void enterStmt(SysYParser.StmtContext ctx) {
         // Handle assignment statements
         if (ctx.lVal() != null && ctx.ASSIGN() != null) {
+            String name = ctx.lVal().IDENT().getText();
+            Symbol symbol = symbolTable.lookupSymbol(name);
+
+            // Check if it's a function first
+            if (symbol != null && symbol.getType().getKind() == Type.TypeKind.FUNCTION) {
+                reportError(SemanticError.ASSIGNMENT_TO_NON_VARIABLE, ctx.ASSIGN().getSymbol(),
+                        "The left-hand side of an assignment must be a variable");
+                return;
+            }
+
             Type lvalType = checkLVal(ctx.lVal());
             Type expType = checkExp(ctx.exp());
 
