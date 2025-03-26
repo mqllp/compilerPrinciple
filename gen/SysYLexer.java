@@ -1,7 +1,4 @@
 // Generated from /home/linan/桌面/Lab/src/SysYLexer.g4 by ANTLR 4.13.2
-
-package parser;
-
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.Token;

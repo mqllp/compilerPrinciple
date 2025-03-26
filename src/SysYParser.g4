@@ -2,9 +2,6 @@ parser grammar SysYParser;
 
 options { tokenVocab = SysYLexer; }
 
-@header {
-package parser;
-}
 
 // Program structure
 program

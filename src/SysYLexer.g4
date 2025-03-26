@@ -1,9 +1,5 @@
 lexer grammar SysYLexer;
 
-@header {
-package parser;
-}
-
 // Keywords
 CONST: 'const';
 INT: 'int';
