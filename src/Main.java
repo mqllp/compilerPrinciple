@@ -40,9 +40,16 @@ public class Main {
             return;
         }
 
-        // Code formatting - output to stdout
-        SysYFormattingVisitor formatter = new SysYFormattingVisitor();
-        String formattedCode = formatter.visit(tree);
-        System.out.println(formattedCode);
+        // Semantic analysis
+        TypeChecker typeChecker = new TypeChecker();
+        typeChecker.check((SysYParser.CompUnitContext) tree.getChild(0));
+
+        // Only proceed with formatting if no semantic errors
+        if (!typeChecker.hasErrors()) {
+            // Code formatting - output to stdout
+            SysYFormattingVisitor formatter = new SysYFormattingVisitor();
+            String formattedCode = formatter.visit(tree);
+            System.out.println(formattedCode);
+        }
     }
 }
