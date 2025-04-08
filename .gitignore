@@ -5,6 +5,7 @@
 !/src/**/*.java
 !/src/*.g4
 /src/*Lexer.java
+/labDescribition
 /src/*Parser.java 
 /src/*ParserBaseListener.java
 /src/*ParserBaseVisitor.java
