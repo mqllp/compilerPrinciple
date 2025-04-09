@@ -1,9 +1,13 @@
 include Makefile.git
 
-export CLASSPATH=/usr/local/lib/antlr-*-complete.jar
+LLVM_JAR = $(shell echo `find /usr/local/lib -name "llvm-*.jar"` | sed  "s/\s\+/:/g")
+JAVACPP_JAR = $(shell echo `find /usr/local/lib -name "javacpp-*.jar"` | sed  "s/\s\+/:/g")
+ANTLR_PATH = $(shell find /usr/local/lib -name "antlr-*-complete.jar")
+
+export CLASSPATH=$(ANTLR_PATH):$(LLVM_JAR):$(JAVACPP_JAR)
 
 DOMAINNAME = oj.compilers.cpl.icu
-ANTLR = java -jar /usr/local/lib/antlr-*-complete.jar -listener -visitor -long-messages
+ANTLR = java -jar $(ANTLR_PATH) -listener -visitor -long-messages
 JAVAC = javac -g
 JAVA = java
 
@@ -11,25 +15,22 @@ JAVA = java
 PFILE = $(shell find . -name "SysYParser.g4")
 LFILE = $(shell find . -name "SysYLexer.g4")
 JAVAFILE = $(shell find . -name "*.java")
-ANTLRPATH = $(shell find /usr/local/lib -name "antlr-*-complete.jar")
 
 compile: antlr
 	$(call git_commit,"make")
 	mkdir -p classes
-	$(JAVAC) -classpath $(ANTLRPATH) $(JAVAFILE) -d classes
+	$(JAVAC) -classpath $(CLASSPATH) $(JAVAFILE) -d classes
 
 run: compile
-	java -classpath ./classes:$(ANTLRPATH) Main $(FILEPATH)
-
+	java -classpath ./classes:$(CLASSPATH) Main ./tests/test1.sysy ./tests/out.ll
 
 antlr: $(LFILE) $(PFILE)
 	$(ANTLR) $(PFILE) $(LFILE)
 
-
 test: compile
 	$(call git_commit, "test")
-	nohup java -classpath ./classes:$(ANTLRPATH) Main ./tests/test1.sysy &
-
+	if [ -e nohup.out ]; then rm nohup.out; fi
+	nohup java -classpath ./classes:$(CLASSPATH) Main ./tests/test1.sysy ./tests/test1.ll &
 
 clean:
 	rm -f src/*.tokens
@@ -37,14 +38,9 @@ clean:
 	rm -f src/SysYLexer.java src/SysYParser.java src/SysYParserBaseListener.java src/SysYParserBaseVisitor.java src/SysYParserListener.java src/SysYParserVisitor.java
 	rm -rf classes
 	rm -rf out
-	rm -rf src/.antlr
-
 
 submit: clean
 	git gc
 	bash submit.sh
 
-
 .PHONY: compile antlr test run clean submit
-
-
