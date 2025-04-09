@@ -1,55 +1,40 @@
-import org.antlr.v4.runtime.CharStream;
-import org.antlr.v4.runtime.CharStreams;
-import org.antlr.v4.runtime.CommonTokenStream;
-import org.antlr.v4.runtime.tree.ParseTree;
-import java.io.IOException;
+import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.tree.*;
+import java.io.*;
 
 public class Main {
-    public static void main(String[] args) throws IOException {
-        if (args.length < 1) {
-            System.err.println("input path is required");
-            return;
+    public static void main(String[] args) {
+        if (args.length != 2) {
+            System.err.println("Usage: java Main <source-file> <output-file>");
+            System.exit(1);
         }
 
-        String source = args[0];
-        CharStream input = CharStreams.fromFileName(source);
+        try {
+            // 读取输入文件
+            String inputFile = args[0];
+            String outputFile = args[1];
 
-        // Lexical analysis
-        SysYLexer sysYLexer = new SysYLexer(input);
-        SysYLexerErrorListener lexerErrorListener = new SysYLexerErrorListener();
-        sysYLexer.removeErrorListeners();
-        sysYLexer.addErrorListener(lexerErrorListener);
+            // 创建词法分析器
+            CharStream input = CharStreams.fromFileName(inputFile);
+            SysYLexer lexer = new SysYLexer(input);
+            CommonTokenStream tokens = new CommonTokenStream(lexer);
 
-        CommonTokenStream tokens = new CommonTokenStream(sysYLexer);
+            // 创建语法分析器
+            SysYParser parser = new SysYParser(tokens);
+            parser.setErrorHandler(new BailErrorStrategy());  // 使用严格的错误处理
+            ParseTree tree = parser.program();
 
-        // Don't proceed if there are lexical errors
-        if (lexerErrorListener.hasError()) {
-            return;
-        }
+            // 创建访问器并生成IR
+            IRVisitor visitor = new IRVisitor(new File(inputFile).getName());
+            visitor.visit(tree);
 
-        // Syntax analysis
-        SysYParser sysYParser = new SysYParser(tokens);
-        SysYParserErrorListener parserErrorListener = new SysYParserErrorListener();
-        sysYParser.removeErrorListeners();
-        sysYParser.addErrorListener(parserErrorListener);
+            // 输出IR到文件
+            visitor.getModule().dump(outputFile);
 
-        ParseTree tree = sysYParser.program();
-
-        // Don't proceed if there are syntax errors
-        if (parserErrorListener.hasError()) {
-            return;
-        }
-
-        // Semantic analysis
-        TypeChecker typeChecker = new TypeChecker();
-        typeChecker.check((SysYParser.CompUnitContext) tree.getChild(0));
-
-        // Only proceed with formatting if no semantic errors
-        if (!typeChecker.hasErrors()) {
-            // Code formatting - output to stdout
-            SysYFormattingVisitor formatter = new SysYFormattingVisitor();
-            String formattedCode = formatter.visit(tree);
-            System.out.println(formattedCode);
+            System.exit(0);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.exit(1);
         }
     }
 }
