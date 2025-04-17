@@ -213,9 +213,14 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             symbolTable.enterScope();
         }
 
+        LLVMValueRef lastValue = null;
         // 访问块中的所有语句
         for (SysYParser.BlockItemContext item : ctx.blockItem()) {
-            visit(item);
+            lastValue = visit(item);
+            // 如果遇到终止指令（如return），则停止处理后续语句
+            if (lastValue != null && LLVMGetInstructionOpcode(lastValue) == LLVMRet) {
+                break;
+            }
         }
 
         // 退出作用域
@@ -223,7 +228,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             symbolTable.exitScope();
         }
 
-        return null;
+        return lastValue;
     }
 
     @Override
