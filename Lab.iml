@@ -8,5 +8,12 @@
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" exported="" name="antlr-4.9.1-complete" level="project" />
+    <orderEntry type="library" name="javacpp-1.5.7" level="project" />
+    <orderEntry type="library" name="javacpp-1.5.7-linux-x86_64" level="project" />
+    <orderEntry type="library" name="llvm-13.0.1-1.5.7-linux-x86_64" level="project" />
+    <orderEntry type="library" name="llvm-13.0.1-1.5.7" level="project" />
+    <orderEntry type="library" name="llvm-platform-13.0.1-1.5.7" level="project" />
+    <orderEntry type="library" name="llvm4j-0.1.2-SNAPSHOT" level="project" />
+    <orderEntry type="library" name="kotlin-stdlib-1.9.0" level="project" />
   </component>
 </module>
