@@ -12,10 +12,9 @@ JAVAC = javac -g
 JAVA = java
 
 
-PFILE = $(shell find . -name "SysYParser.g4")
-LFILE = $(shell find . -name "SysYLexer.g4")
-JAVAFILE = $(shell find . -name "*.java")
-
+PFILE = $(shell find . -name "SysYParser.g4" -not -path "./gjj_codes/*")
+LFILE = $(shell find . -name "SysYLexer.g4" -not -path "./gjj_codes/*")
+JAVAFILE = $(shell find . -name "*.java" -not -path "./gjj_codes/*")
 compile: antlr
 	$(call git_commit,"make")
 	mkdir -p classes
