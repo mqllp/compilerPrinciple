@@ -1,9 +1,10 @@
 import org.llvm4j.llvm4j.Value;
+import org.bytedeco.llvm.LLVM.*;
 import java.util.*;
 
 public class IRSymbolTable {
-    private LinkedList<Map<String, Value>> symbolTables;
-    private Map<String, Value> functionTable;  // 存储函数定义
+    private LinkedList<Map<String, LLVMValueRef>> symbolTables;
+    private Map<String, LLVMValueRef> functionTable;
 
     public IRSymbolTable() {
         symbolTables = new LinkedList<>();
@@ -21,18 +22,18 @@ public class IRSymbolTable {
         }
     }
 
-    public void put(String name, Value value) {
+    public void put(String name, LLVMValueRef value) {
         symbolTables.getFirst().put(name, value);
     }
 
-    public void putFunction(String name, Value function) {
+    public void putFunction(String name, LLVMValueRef function) {
         functionTable.put(name, function);
     }
 
-    public Value get(String name) {
+    public LLVMValueRef get(String name) {
         // 首先在变量表中查找
-        for (Map<String, Value> table : symbolTables) {
-            Value value = table.get(name);
+        for (Map<String, LLVMValueRef> table : symbolTables) {
+            LLVMValueRef value = table.get(name);
             if (value != null) {
                 return value;
             }

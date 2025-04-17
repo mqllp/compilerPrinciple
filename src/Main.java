@@ -1,40 +1,52 @@
-import org.antlr.v4.runtime.*;
-import org.antlr.v4.runtime.tree.*;
-import java.io.*;
+import org.antlr.v4.runtime.CharStream;
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.CommonTokenStream;
+import org.bytedeco.javacpp.BytePointer;
+import org.bytedeco.llvm.LLVM.*;
+
+import java.io.IOException;
+
+import static org.bytedeco.llvm.global.LLVM.*;
 
 public class Main {
-    public static void main(String[] args) {
-        if (args.length != 2) {
-            System.err.println("Usage: java Main <source-file> <output-file>");
-            System.exit(1);
+    public static void main(String[] args) throws IOException {
+        if (args.length < 2) {
+            System.err.println("使用方式: java Main 输入文件 输出文件");
+            return;
+        }
+        String inputFile = args[0];
+        String outputFile = args[1];
+
+        // 初始化LLVM
+        LLVMInitializeCore(LLVMGetGlobalPassRegistry());
+        LLVMLinkInMCJIT();
+        LLVMInitializeNativeAsmPrinter();
+        LLVMInitializeNativeAsmParser();
+        LLVMInitializeNativeTarget();
+
+        // 创建module
+        LLVMModuleRef module = LLVMModuleCreateWithName("SysYModule");
+        LLVMBuilderRef builder = LLVMCreateBuilder();
+
+        // 解析源代码
+        CharStream input = CharStreams.fromFileName(inputFile);
+        SysYLexer lexer = new SysYLexer(input);
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        SysYParser parser = new SysYParser(tokens);
+        SysYParser.ProgramContext tree = parser.program();
+
+        // 生成IR
+        IRGenerator generator = new IRGenerator(module, builder);
+        generator.visit(tree);
+
+        // 输出IR到文件
+        BytePointer error = new BytePointer();
+        if (LLVMPrintModuleToFile(module, outputFile, error) != 0) {
+            System.err.println("错误: " + error.getString());
         }
 
-        try {
-            // 读取输入文件
-            String inputFile = args[0];
-            String outputFile = args[1];
-
-            // 创建词法分析器
-            CharStream input = CharStreams.fromFileName(inputFile);
-            SysYLexer lexer = new SysYLexer(input);
-            CommonTokenStream tokens = new CommonTokenStream(lexer);
-
-            // 创建语法分析器
-            SysYParser parser = new SysYParser(tokens);
-            parser.setErrorHandler(new BailErrorStrategy());  // 使用严格的错误处理
-            ParseTree tree = parser.program();
-
-            // 创建访问器并生成IR
-            IRVisitor visitor = new IRVisitor(new File(inputFile).getName());
-            visitor.visit(tree);
-
-            // 输出IR到文件
-            visitor.getModule().dump(outputFile);
-
-            System.exit(0);
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.exit(1);
-        }
+        // 释放资源
+        LLVMDisposeBuilder(builder);
+        LLVMDisposeModule(module);
     }
 }
