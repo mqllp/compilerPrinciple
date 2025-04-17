@@ -194,16 +194,20 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
         // 访问函数体
         visit(ctx.block());
 
-        // 确保void函数有return语句
-        if (isVoid && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
-            LLVMBuildRetVoid(builder);
+        LLVMValueRef blockRet = visit(ctx.block());
+
+        if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+            if (isVoid) {
+                LLVMBuildRetVoid(builder);
+            } else if (blockRet != null && LLVMGetInstructionOpcode(blockRet) == LLVMRet) {
+                // do nothing
+            } else if (blockRet != null) {
+                LLVMBuildRet(builder, blockRet);
+            } else {
+                LLVMBuildRet(builder, LLVMConstInt(i32Type, 0, 0));
+            }
         }
 
-        // 对非 void 函数也补 return（如果最后没有 ret）
-        if (!isVoid && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
-            // 默认返回0，或者返回一个undef会更安全一点
-            LLVMBuildRet(builder, LLVMConstInt(i32Type, 0, 0));
-        }
 
         // 退出作用域
         symbolTable.exitScope();
