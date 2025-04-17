@@ -1,5 +1,5 @@
-; ModuleID = 'SysYModule'
-source_filename = "SysYModule"
+; ModuleID = 'module'
+source_filename = "module"
 
 define i32 @f(i32 %0) {
 fEntry:
