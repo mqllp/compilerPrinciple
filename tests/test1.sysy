@@ -1,5 +1,8 @@
-int g_var = 2;
+int f(int i) {
+    return i;
+}
+
 int main() {
     int a = 1;
-    return a + g_var;
+    return f(a);
 }
