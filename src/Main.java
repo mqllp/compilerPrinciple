@@ -25,7 +25,7 @@ public class Main {
         LLVMInitializeNativeTarget();
 
         // 创建module
-        LLVMModuleRef module = LLVMModuleCreateWithName("SysYModule");
+        LLVMModuleRef module = LLVMModuleCreateWithName("module");
         LLVMBuilderRef builder = LLVMCreateBuilder();
 
         // 解析源代码
