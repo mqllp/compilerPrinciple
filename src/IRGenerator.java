@@ -199,6 +199,12 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             LLVMBuildRetVoid(builder);
         }
 
+        // 对非 void 函数也补 return（如果最后没有 ret）
+        if (!isVoid && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+            // 默认返回0，或者返回一个undef会更安全一点
+            LLVMBuildRet(builder, LLVMConstInt(i32Type, 0, 0));
+        }
+
         // 退出作用域
         symbolTable.exitScope();
         currentFunction = null;
