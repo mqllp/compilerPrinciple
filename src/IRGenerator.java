@@ -347,7 +347,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
         if (ctx.RETURN() != null) {
             if (ctx.exp() != null) {
                 // 有返回值的情况
-                LLVMValueRef returnValue = visit(ctx.exp());
+                LLVMValueRef returnValue = ctx.exp().accept(this);
                 return LLVMBuildRet(builder, returnValue);
             } else {
                 // 无返回值的情况（void函数）
@@ -458,7 +458,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
         }
 
         // 索引数组变量暂不处理
-        return LLVMBuildLoad(builder, var, name + "_load");
+        return LLVMBuildLoad(builder, var, name + "1");
     }
 
     @Override
