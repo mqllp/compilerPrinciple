@@ -191,8 +191,6 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             }
         }
 
-        // 访问函数体
-        visit(ctx.block());
 
         LLVMValueRef blockRet = visit(ctx.block());
 
