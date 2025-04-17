@@ -1,5 +1,0 @@
-No semantic errors in the program!
-
-int main() {
-    return -2;
-}
