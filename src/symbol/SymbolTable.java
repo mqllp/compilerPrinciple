@@ -109,4 +109,8 @@ public class SymbolTable {
         functionTable.clear();
         enterScope();  // 重新创建全局作用域
     }
+
+    public Symbol lookupSymbol(String name) {
+        return null;
+    }
 }
