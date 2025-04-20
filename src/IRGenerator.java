@@ -276,41 +276,38 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
             LLVMBuildCondBr(builder, condition, thenBlock, ctx.ELSE() != null ? elseBlock : mergeBlock);
 
-            // 处理if语句的部分修改如下：
-// ...
-
-// 处理then块
+            // 处理then块
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
             boolean thenReturns = thenValue != null && LLVMGetInstructionOpcode(thenValue) == LLVMRet;
 
+            // 如果then块没有返回语句，则需要跳转到合并块
             if (!thenReturns && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
-// 处理else块
+            // 处理else块
             boolean elseReturns = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
                 LLVMValueRef elseValue = visit(ctx.stmt(1));
                 elseReturns = elseValue != null && LLVMGetInstructionOpcode(elseValue) == LLVMRet;
 
+                // 如果else块没有返回语句，则需要跳转到合并块
                 if (!elseReturns && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
             }
 
-// 判断是否需要合并块
-            boolean needMergeBlock = !(thenReturns && (ctx.ELSE() == null || elseReturns));
+            // 如果至少有一个分支没有返回语句，需要设置合并块
+            boolean needMergeBlock = !thenReturns || (ctx.ELSE() != null && !elseReturns);
             if (needMergeBlock) {
                 LLVMPositionBuilderAtEnd(builder, mergeBlock);
             } else {
+                // 如果所有分支都有返回语句，删除未使用的合并块
                 LLVMDeleteBasicBlock(mergeBlock);
-                mergeBlock = null;
             }
-
-// 返回其中一个分支的结果（如果两者都有返回）
-            return (thenReturns && elseReturns) ? thenValue : null;
+            return null;
         }
 
         // 处理while语句
