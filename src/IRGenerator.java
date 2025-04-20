@@ -281,6 +281,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             LLVMValueRef thenValue = visit(ctx.stmt(0));
             boolean thenReturns = thenValue != null && LLVMGetInstructionOpcode(thenValue) == LLVMRet;
 
+            // 如果then块没有返回语句，则需要跳转到合并块
             if (!thenReturns && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                 LLVMBuildBr(builder, mergeBlock);
             }
@@ -292,13 +293,14 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
                 LLVMValueRef elseValue = visit(ctx.stmt(1));
                 elseReturns = elseValue != null && LLVMGetInstructionOpcode(elseValue) == LLVMRet;
 
+                // 如果else块没有返回语句，则需要跳转到合并块
                 if (!elseReturns && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
             }
 
-            // 只有在需要合并块的情况下才继续在合并块中生成代码
-            boolean needMergeBlock = !(thenReturns && (ctx.ELSE() == null || elseReturns));
+            // 如果至少有一个分支没有返回语句，需要设置合并块
+            boolean needMergeBlock = !thenReturns || (ctx.ELSE() != null && !elseReturns);
             if (needMergeBlock) {
                 LLVMPositionBuilderAtEnd(builder, mergeBlock);
             } else {
