@@ -1,9 +1,9 @@
 int a = 6;
 int main() {
     if (a > 6) {
-        a = 7;
+        a = 9;
     } else {
-        a = 8;
+        a = 222;
     }
     return a;
 }
