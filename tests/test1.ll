@@ -27,4 +27,6 @@ else:                                             ; preds = %mainEntry
 ifcont:                                           ; preds = %else, %then
   %a11 = load i32, i32* @a, align 4
   ret i32 %a11
+
+unreachable:                                      ; No predecessors!
 }
