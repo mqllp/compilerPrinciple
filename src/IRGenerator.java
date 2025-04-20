@@ -276,10 +276,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
             LLVMBuildCondBr(builder, condition, thenBlock, ctx.ELSE() != null ? elseBlock : mergeBlock);
 
-            // 处理if语句的部分修改如下：
-// ...
-
-// 处理then块
+            // 处理then块
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
             boolean thenReturns = thenValue != null && LLVMGetInstructionOpcode(thenValue) == LLVMRet;
@@ -288,7 +285,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
-// 处理else块
+            // 处理else块
             boolean elseReturns = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
@@ -300,7 +297,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
                 }
             }
 
-// 判断是否需要合并块
+            // 判断是否需要合并块
             boolean needMergeBlock = !(thenReturns && (ctx.ELSE() == null || elseReturns));
             if (needMergeBlock) {
                 LLVMPositionBuilderAtEnd(builder, mergeBlock);
@@ -309,8 +306,12 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
                 mergeBlock = null;
             }
 
-// 返回其中一个分支的结果（如果两者都有返回）
-            return (thenReturns && elseReturns) ? thenValue : null;
+            // 如果两个分支都有返回语句，则后续代码不应该执行
+            if (thenReturns && (ctx.ELSE() == null || elseReturns)) {
+                return thenValue; // 返回一个值，表示该语句已经处理完成并且已经有返回
+            }
+
+            return null;
         }
 
         // 处理while语句
