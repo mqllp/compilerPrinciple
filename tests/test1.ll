@@ -25,6 +25,5 @@ else:                                             ; preds = %mainEntry
   br label %ifcont
 
 ifcont:                                           ; preds = %else, %then
-  %a11 = load i32, i32* @a, align 4
-  ret i32 %a11
+  ret i32 0
 }
