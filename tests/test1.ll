@@ -1,8 +1,8 @@
 ; ModuleID = 'module'
 source_filename = "module"
 
-define i32 @a() {
-aEntry:
+define i32 @xyz() {
+xyzEntry:
   ret i32 1
 }
 
