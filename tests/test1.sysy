@@ -1,9 +1,11 @@
 int a = 6;
 int main() {
-    if (a > 6) {
-        a = 9;
+int b = 5;
+int c = a + b;
+    if (c == 10) {
+        return 0;
     } else {
-        a = 222;
+        return 1;
     }
     return a;
 }
