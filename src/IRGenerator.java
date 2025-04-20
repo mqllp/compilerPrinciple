@@ -280,19 +280,35 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             // 处理then块
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
+
             // 检查then块中是否已经有返回语句
-            if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+            boolean thenHasTerminator = false;
+            if (thenValue != null && LLVMGetInstructionOpcode(thenValue) == LLVMRet) {
+                thenHasTerminator = true;
+            } else if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
             // 处理else块
+            boolean elseHasTerminator = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
-                visit(ctx.stmt(1));
+                LLVMValueRef elseValue = visit(ctx.stmt(1));
+
                 // 检查else块中是否已经有返回语句
-                if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+                if (elseValue != null && LLVMGetInstructionOpcode(elseValue) == LLVMRet) {
+                    elseHasTerminator = true;
+                } else if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
+            }
+
+            // 如果所有分支都有终止指令，则不需要继续生成代码
+            if ((ctx.ELSE() != null && thenHasTerminator && elseHasTerminator) ||
+                    (ctx.ELSE() == null && thenHasTerminator)) {
+                // 删除未使用的合并块
+                LLVMDeleteBasicBlock(mergeBlock);
+                return null;
             }
 
             // 设置后续代码在merge块中
