@@ -267,52 +267,51 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
         // 处理if语句
         if (ctx.IF() != null) {
+            // 条件计算
             LLVMValueRef condValue = visit(ctx.cond());
             LLVMValueRef condition = LLVMBuildICmp(builder, LLVMIntNE, condValue, zero, "ifcond");
 
+            // 创建必要的基本块
             LLVMBasicBlockRef thenBlock = LLVMAppendBasicBlock(currentFunction, "then");
-            LLVMBasicBlockRef elseBlock = ctx.ELSE() != null ?
-                    LLVMAppendBasicBlock(currentFunction, "else") : null;
+            LLVMBasicBlockRef elseBlock = null;
+            if (ctx.ELSE() != null) {
+                elseBlock = LLVMAppendBasicBlock(currentFunction, "else");
+            }
+            // 只有在需要时才创建合并块
             LLVMBasicBlockRef mergeBlock = LLVMAppendBasicBlock(currentFunction, "ifcont");
 
+            // 条件跳转
             LLVMBuildCondBr(builder, condition, thenBlock, ctx.ELSE() != null ? elseBlock : mergeBlock);
 
             // 处理then块
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
-
-            // 检查then块中是否已经有返回语句
-            boolean thenHasTerminator = false;
-            if (thenValue != null && LLVMGetInstructionOpcode(thenValue) == LLVMRet) {
-                thenHasTerminator = true;
-            } else if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+            boolean thenHasReturn = (thenValue != null && LLVMGetInstructionOpcode(thenValue) == LLVMRet);
+            // 只有在没有返回语句时才跳转到合并块
+            if (!thenHasReturn && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
             // 处理else块
-            boolean elseHasTerminator = false;
+            boolean elseHasReturn = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
                 LLVMValueRef elseValue = visit(ctx.stmt(1));
-
-                // 检查else块中是否已经有返回语句
-                if (elseValue != null && LLVMGetInstructionOpcode(elseValue) == LLVMRet) {
-                    elseHasTerminator = true;
-                } else if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+                elseHasReturn = (elseValue != null && LLVMGetInstructionOpcode(elseValue) == LLVMRet);
+                // 只有在没有返回语句时才跳转到合并块
+                if (!elseHasReturn && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
             }
 
-            // 如果所有分支都有终止指令，则不需要继续生成代码
-            if ((ctx.ELSE() != null && thenHasTerminator && elseHasTerminator) ||
-                    (ctx.ELSE() == null && thenHasTerminator)) {
-                // 删除未使用的合并块
-                LLVMDeleteBasicBlock(mergeBlock);
-                return null;
+            // 确定是否需要处理合并块
+            boolean allPathsReturn = thenHasReturn && (ctx.ELSE() == null || elseHasReturn);
+
+            if (!allPathsReturn) {
+                // 至少有一条路径没有返回，继续处理合并块
+                LLVMPositionBuilderAtEnd(builder, mergeBlock);
             }
 
-            // 设置后续代码在merge块中
-            LLVMPositionBuilderAtEnd(builder, mergeBlock);
             return null;
         }
 
