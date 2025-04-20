@@ -280,7 +280,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             // 处理then块
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
-            // 检查then块中是否已经有返回语句
+            // 如果then块没有终止指令（如return），则添加跳转到merge块
             if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                 LLVMBuildBr(builder, mergeBlock);
             }
@@ -288,8 +288,8 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             // 处理else块
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
-                visit(ctx.stmt(1));
-                // 检查else块中是否已经有返回语句
+                LLVMValueRef elseValue = visit(ctx.stmt(1));
+                // 如果else块没有终止指令（如return），则添加跳转到merge块
                 if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
@@ -297,6 +297,17 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
             // 设置后续代码在merge块中
             LLVMPositionBuilderAtEnd(builder, mergeBlock);
+
+            // 检查是否所有分支都有终止指令
+            // 如果所有分支都终止了，这个merge块是无法到达的，需要创建一个不可达块
+            if ((ctx.ELSE() == null && isPreviousInstructionBranch(thenBlock)) ||
+                    (ctx.ELSE() != null && isPreviousInstructionBranch(thenBlock) && isPreviousInstructionBranch(elseBlock))) {
+                // 创建不可达块，确保后续代码不会被执行
+                LLVMAppendBasicBlock(currentFunction, "unreachable");
+                // 不需要放置构建器，因为后续代码不应该被生成
+                return null;
+            }
+
             return null;
         }
 
