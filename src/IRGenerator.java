@@ -471,7 +471,20 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
     @Override
     public LLVMValueRef visitNumber(SysYParser.NumberContext ctx) {
-        int value = Integer.parseInt(ctx.INTEGER_CONST().getText());
+        String numStr = ctx.INTEGER_CONST().getText();
+        int value;
+
+        if (numStr.startsWith("0x") || numStr.startsWith("0X")) {
+            // 处理十六进制
+            value = Integer.parseInt(numStr.substring(2), 16);
+        } else if (numStr.length() > 1 && numStr.startsWith("0")) {
+            // 处理八进制
+            value = Integer.parseInt(numStr.substring(1), 8);
+        } else {
+            // 处理十进制
+            value = Integer.parseInt(numStr);
+        }
+
         return LLVMConstInt(i32Type, value, 0);
     }
 
