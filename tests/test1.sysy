@@ -1,4 +1,4 @@
-int a(){
+int xyz(){
 return 1;
 }
 int main(){
