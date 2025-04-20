@@ -278,22 +278,35 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
             // 处理then块
             LLVMPositionBuilderAtEnd(builder, thenBlock);
-            visit(ctx.stmt(0));
-            if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+            LLVMValueRef thenValue = visit(ctx.stmt(0));
+            boolean thenReturns = (thenValue != null && LLVMGetInstructionOpcode(thenValue) == LLVMRet);
+
+            if (!thenReturns && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                 LLVMBuildBr(builder, mergeBlock);
             }
+
+            // 提前声明elseReturns变量
+            boolean elseReturns = false;
 
             // 处理else块
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
-                visit(ctx.stmt(1));
-                if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+                LLVMValueRef elseValue = visit(ctx.stmt(1));
+                elseReturns = (elseValue != null && LLVMGetInstructionOpcode(elseValue) == LLVMRet);
+
+                if (!elseReturns && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
             }
 
-            // 继续在合并块后面生成代码
-            LLVMPositionBuilderAtEnd(builder, mergeBlock);
+            // 只有在需要合并块的情况下才继续在合并块中生成代码
+            boolean needMergeBlock = !(thenReturns && (ctx.ELSE() == null || elseReturns));
+            if (needMergeBlock) {
+                LLVMPositionBuilderAtEnd(builder, mergeBlock);
+            } else {
+                // 如果所有分支都有返回语句，删除未使用的合并块
+                LLVMDeleteBasicBlock(mergeBlock);
+            }
             return null;
         }
 
