@@ -225,7 +225,8 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
         // 访问块中的所有语句
         for (SysYParser.BlockItemContext item : ctx.blockItem()) {
             lastValue = visit(item);
-            // 如果遇到终止指令（如return），则停止处理后续语句
+
+            // 如果是return指令，则中断后续语句处理
             if (lastValue != null && LLVMGetInstructionOpcode(lastValue) == LLVMRet) {
                 break;
             }
@@ -279,38 +280,23 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             // 处理then块
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
-            boolean thenReturns = thenValue != null && LLVMGetInstructionOpcode(thenValue) == LLVMRet;
-
-            if (!thenReturns && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+            // 检查then块中是否已经有返回语句
+            if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
             // 处理else块
-            boolean elseReturns = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
-                LLVMValueRef elseValue = visit(ctx.stmt(1));
-                elseReturns = elseValue != null && LLVMGetInstructionOpcode(elseValue) == LLVMRet;
-
-                if (!elseReturns && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+                visit(ctx.stmt(1));
+                // 检查else块中是否已经有返回语句
+                if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
             }
 
-            // 判断是否需要合并块
-            boolean needMergeBlock = !(thenReturns && (ctx.ELSE() == null || elseReturns));
-            if (needMergeBlock) {
-                LLVMPositionBuilderAtEnd(builder, mergeBlock);
-            } else {
-                LLVMDeleteBasicBlock(mergeBlock);
-                mergeBlock = null;
-            }
-
-            // 如果两个分支都有返回语句，则后续代码不应该执行
-            if (thenReturns && (ctx.ELSE() == null || elseReturns)) {
-                return thenValue; // 返回一个值，表示该语句已经处理完成并且已经有返回
-            }
-
+            // 设置后续代码在merge块中
+            LLVMPositionBuilderAtEnd(builder, mergeBlock);
             return null;
         }
 
