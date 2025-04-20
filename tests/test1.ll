@@ -43,8 +43,6 @@ ifcont:                                           ; preds = %hanoiEntry
   %source18 = load i32, i32* %source, align 4
   %calltmp9 = call void @hanoi(i32 %subtmp5, i32 %auxiliary16, i32 %target17, i32 %source18)
   ret void
-
-unreachable:                                      ; No predecessors!
 }
 
 define i32 @main() {
