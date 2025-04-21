@@ -1,4 +1,4 @@
-line 5:7 mismatched input ';' expecting {'+', '-', '!', '(', IDENT, INTEGER_CONST}
+line 5:8 mismatched input ';' expecting {'+', '-', '!', '(', IDENT, INTEGER_CONST}
 Exception in thread "main" java.lang.NullPointerException
 	at org.antlr.v4.runtime.tree.AbstractParseTreeVisitor.visit(AbstractParseTreeVisitor.java:18)
 	at IRGenerator.visitUnaryExp(IRGenerator.java:443)
