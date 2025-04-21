@@ -266,11 +266,11 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 //            return visit(ctx.exp());
 //        }
 
-        // 处理表达式语句，但不返回表达式的值（避免被误判为 return）
-        if (ctx.exp() != null && ctx.SEMICOLON() != null && ctx.ASSIGN() == null) {
-            visit(ctx.exp());
-            return null; // 显式返回 null 表示不是 return 指令
-        }
+//        // 处理表达式语句，但不返回表达式的值（避免被误判为 return）
+//        if (ctx.exp() != null && ctx.SEMICOLON() != null && ctx.ASSIGN() == null) {
+//            visit(ctx.exp());
+//            return null; // 显式返回 null 表示不是 return 指令
+//        }
 
 
         // 处理块
