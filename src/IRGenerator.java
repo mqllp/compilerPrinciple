@@ -36,8 +36,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
         LLVMValueRef lastInstruction = LLVMGetLastInstruction(block);
         if (lastInstruction != null) {
             int opcode = LLVMGetInstructionOpcode(lastInstruction);
-            // 检查是否为任何终止指令类型
-            return LLVMIsATerminatorInst(lastInstruction).address() != 0;
+            return opcode == LLVMRet || opcode == LLVMBr;
         }
         return false;
     }
@@ -227,8 +226,8 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
         for (SysYParser.BlockItemContext item : ctx.blockItem()) {
             lastValue = visit(item);
 
-            // 如果是终止指令，中断后续语句处理
-            if (lastValue != null && LLVMIsATerminatorInst(lastValue).address() != 0) {
+            // 如果是return指令，则中断后续语句处理
+            if (lastValue != null && LLVMGetInstructionOpcode(lastValue) == LLVMRet) {
                 break;
             }
         }
@@ -284,19 +283,18 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             // 处理then分支
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
-            // 获取当前插入位置的基本块，而不是使用原始的thenBlock
-            LLVMBasicBlockRef currentBlock = LLVMGetInsertBlock(builder);
-            if (!isPreviousInstructionBranch(currentBlock)) {
+            // 如果then分支没有终止指令，添加跳转到合并块
+            if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
             // 处理else分支
+            boolean elseHasReturn = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
                 LLVMValueRef elseValue = visit(ctx.stmt(1));
-                // 同样，获取当前插入位置的基本块
-                currentBlock = LLVMGetInsertBlock(builder);
-                if (!isPreviousInstructionBranch(currentBlock)) {
+                // 如果else分支没有终止指令，添加跳转到合并块
+                if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
             }
@@ -365,7 +363,6 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             if (ctx.exp() != null) {
                 // 有返回值的情况
                 LLVMValueRef returnValue = visit(ctx.exp());
-                // 使用LLVMBuildRet构建return指令并返回这个指令
                 return LLVMBuildRet(builder, returnValue);
             } else {
                 // 无返回值的情况（void函数）
