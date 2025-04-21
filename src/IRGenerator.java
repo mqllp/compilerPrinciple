@@ -382,11 +382,11 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
     public LLVMValueRef visitAddExp(SysYParser.AddExpContext ctx) {
         // 处理加减表达式
         if (ctx.addExp() == null) {
-            return visit(ctx.mulExp());
+            return visit(ctx.addExp());
         }
 
         LLVMValueRef left = visit(ctx.addExp());
-        LLVMValueRef right = visit(ctx.mulExp());
+        LLVMValueRef right = visit(ctx.addExp());
 
         if (ctx.PLUS() != null) {
             return LLVMBuildAdd(builder, left, right, "addtmp");
