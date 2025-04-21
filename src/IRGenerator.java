@@ -286,23 +286,22 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             // 处理then块
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
-            boolean thenHasReturn = (thenValue != null && LLVMGetInstructionOpcode(thenValue) == LLVMRet);
-            // 只有在没有返回语句时才跳转到合并块
-            if (!thenHasReturn && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+            boolean thenHasReturn = isPreviousInstructionBranch(LLVMGetInsertBlock(builder)); // ✅ 改成用函数判断
+            if (!thenHasReturn) {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
-            // 处理else块
+// 处理else块
             boolean elseHasReturn = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
                 LLVMValueRef elseValue = visit(ctx.stmt(1));
-                elseHasReturn = (elseValue != null && LLVMGetInstructionOpcode(elseValue) == LLVMRet);
-                // 只有在没有返回语句时才跳转到合并块
-                if (!elseHasReturn && !isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+                elseHasReturn = isPreviousInstructionBranch(LLVMGetInsertBlock(builder)); // ✅ 同样改成用函数判断
+                if (!elseHasReturn) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
             }
+
 
             // 确定是否需要处理合并块
             boolean allPathsReturn = thenHasReturn && (ctx.ELSE() == null || elseHasReturn);
