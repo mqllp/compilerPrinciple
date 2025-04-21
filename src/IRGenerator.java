@@ -33,12 +33,16 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
 
     private boolean isPreviousInstructionBranch(LLVMBasicBlockRef block) {
+        /*
         LLVMValueRef lastInstruction = LLVMGetLastInstruction(block);
         if (lastInstruction != null) {
             int opcode = LLVMGetInstructionOpcode(lastInstruction);
             return opcode == LLVMRet || opcode == LLVMBr;
         }
         return false;
+
+         */
+        return true;
     }
 
     @Override
