@@ -33,11 +33,6 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
 
     private boolean isPreviousInstructionBranch(LLVMBasicBlockRef block) {
-        LLVMValueRef lastInstruction = LLVMGetLastInstruction(block);
-        if (lastInstruction != null) {
-            int opcode = LLVMGetInstructionOpcode(lastInstruction);
-            return opcode == LLVMRet || opcode == LLVMBr;
-        }
         return false;
     }
 
@@ -382,11 +377,11 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
     public LLVMValueRef visitAddExp(SysYParser.AddExpContext ctx) {
         // 处理加减表达式
         if (ctx.addExp() == null) {
-            return visit(ctx.addExp());
+            return visit(ctx.mulExp());
         }
 
         LLVMValueRef left = visit(ctx.addExp());
-        LLVMValueRef right = visit(ctx.addExp());
+        LLVMValueRef right = visit(ctx.mulExp());
 
         if (ctx.PLUS() != null) {
             return LLVMBuildAdd(builder, left, right, "addtmp");
