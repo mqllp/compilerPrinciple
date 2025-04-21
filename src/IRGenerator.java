@@ -261,10 +261,10 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             return LLVMBuildStore(builder, value, varPtr);
         }
 
-        // 处理表达式语句
-        if (ctx.exp() != null && ctx.SEMICOLON() != null && ctx.ASSIGN() == null) {
-            return visit(ctx.exp());
-        }
+//        // 处理表达式语句
+//        if (ctx.exp() != null && ctx.SEMICOLON() != null && ctx.ASSIGN() == null) {
+//            return visit(ctx.exp());
+//        }
 
         // 处理块
         if (ctx.block() != null) {
