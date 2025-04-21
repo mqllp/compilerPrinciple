@@ -18,5 +18,5 @@ else:                                             ; preds = %mainEntry
   br label %ifcont
 
 ifcont:                                           ; preds = %else, %then
-  ret i32 0
+  ret i32 9
 }
