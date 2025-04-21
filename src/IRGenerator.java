@@ -273,45 +273,34 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
             // 创建必要的基本块
             LLVMBasicBlockRef thenBlock = LLVMAppendBasicBlock(currentFunction, "then");
-            LLVMBasicBlockRef elseBlock = null;
-            if (ctx.ELSE() != null) {
-                elseBlock = LLVMAppendBasicBlock(currentFunction, "else");
-            }
-            // 只有在需要时才创建合并块
+            LLVMBasicBlockRef elseBlock = ctx.ELSE() != null ?
+                    LLVMAppendBasicBlock(currentFunction, "else") : null;
             LLVMBasicBlockRef mergeBlock = LLVMAppendBasicBlock(currentFunction, "ifcont");
 
             // 条件跳转
             LLVMBuildCondBr(builder, condition, thenBlock, ctx.ELSE() != null ? elseBlock : mergeBlock);
 
-            // 保存当前 insertion block 以判断 return 是否被正确插入
+            // 处理then分支
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
-            boolean thenHasReturn = isPreviousInstructionBranch(thenBlock);  // 👈 检查 thenBlock 而不是当前 block！
-
-            if (!thenHasReturn) {
+            // 如果then分支没有终止指令，添加跳转到合并块
+            if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
+            // 处理else分支
             boolean elseHasReturn = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
                 LLVMValueRef elseValue = visit(ctx.stmt(1));
-                elseHasReturn = isPreviousInstructionBranch(elseBlock); // 👈 同样检查 elseBlock
-                if (!elseHasReturn) {
+                // 如果else分支没有终止指令，添加跳转到合并块
+                if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
             }
 
-
-
-            // 确定是否需要处理合并块
-            boolean allPathsReturn = thenHasReturn && (ctx.ELSE() == null || elseHasReturn);
-
-            if (!allPathsReturn) {
-                // 至少有一条路径没有返回，继续处理合并块
-                LLVMPositionBuilderAtEnd(builder, mergeBlock);
-            }
-
+            // 处理合并块
+            LLVMPositionBuilderAtEnd(builder, mergeBlock);
             return null;
         }
 
