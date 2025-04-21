@@ -18,6 +18,9 @@ then:                                             ; preds = %mainEntry
   br label %ifcont
 
 else:                                             ; preds = %mainEntry
+  %a = alloca i32, align 4
+  store i32 0, i32* %a, align 4
+  %a1 = load i32, i32* %a, align 4
   br label %ifcont
 
 ifcont:                                           ; preds = %else, %then

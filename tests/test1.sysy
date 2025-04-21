@@ -1,15 +1,9 @@
 int main()
 {
     int n = 3;
-    if (n > 1){
-    n=n+6;
-        return 1;
-    }
-    else {
-    int a = 0;
-    return a;
+    while (n < 6) {
+        n = n + 1;
         return 0;
     }
     return n;
-    //666
 }
