@@ -12,11 +12,8 @@ mainEntry:
   br i1 %ifcond, label %then, label %else
 
 then:                                             ; preds = %mainEntry
-  br label %ifcont
 
 else:                                             ; preds = %mainEntry
-  br label %ifcont
 
-ifcont:                                           ; preds = %else, %then
-  ret i32 0
+ifcont:                                           ; No predecessors!
 }

@@ -42,7 +42,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
         return false;
 
          */
-        return true;
+        return false;
     }
 
     @Override
