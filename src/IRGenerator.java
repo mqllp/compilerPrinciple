@@ -291,7 +291,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
-// 处理else块
+            // 处理else块
             boolean elseHasReturn = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
