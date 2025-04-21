@@ -12,13 +12,15 @@ mainEntry:
   br i1 %ifcond, label %then, label %else
 
 then:                                             ; preds = %mainEntry
-  store i32 4, i32* %n, align 4
+  %n11 = load i32, i32* %n, align 4
+  %addtmp = add i32 %n11, 6
+  store i32 %addtmp, i32* %n, align 4
   br label %ifcont
 
 else:                                             ; preds = %mainEntry
   br label %ifcont
 
 ifcont:                                           ; preds = %else, %then
-  %n11 = load i32, i32* %n, align 4
-  ret i32 %n11
+  %n12 = load i32, i32* %n, align 4
+  ret i32 %n12
 }
