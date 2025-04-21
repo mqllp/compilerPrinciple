@@ -13,9 +13,8 @@ mainEntry:
 
 then:                                             ; preds = %mainEntry
   ret i32 0
-  br label %ifcont
 
-ifcont:                                           ; preds = %then, %mainEntry
+ifcont:                                           ; preds = %mainEntry
   %n11 = load i32, i32* %n, align 4
   ret i32 %n11
 }
