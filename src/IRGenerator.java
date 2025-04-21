@@ -283,18 +283,19 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             // 处理then分支
             LLVMPositionBuilderAtEnd(builder, thenBlock);
             LLVMValueRef thenValue = visit(ctx.stmt(0));
-            // 如果then分支没有终止指令，添加跳转到合并块
-            if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+            // 获取当前插入位置的基本块，而不是使用原始的thenBlock
+            LLVMBasicBlockRef currentBlock = LLVMGetInsertBlock(builder);
+            if (!isPreviousInstructionBranch(currentBlock)) {
                 LLVMBuildBr(builder, mergeBlock);
             }
 
             // 处理else分支
-            boolean elseHasReturn = false;
             if (ctx.ELSE() != null) {
                 LLVMPositionBuilderAtEnd(builder, elseBlock);
                 LLVMValueRef elseValue = visit(ctx.stmt(1));
-                // 如果else分支没有终止指令，添加跳转到合并块
-                if (!isPreviousInstructionBranch(LLVMGetInsertBlock(builder))) {
+                // 同样，获取当前插入位置的基本块
+                currentBlock = LLVMGetInsertBlock(builder);
+                if (!isPreviousInstructionBranch(currentBlock)) {
                     LLVMBuildBr(builder, mergeBlock);
                 }
             }
