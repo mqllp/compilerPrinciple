@@ -33,7 +33,13 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
 
     private boolean isPreviousInstructionBranch(LLVMBasicBlockRef block) {
+        LLVMValueRef lastInstruction = LLVMGetLastInstruction(block);
+        if (lastInstruction != null) {
+            int opcode = LLVMGetInstructionOpcode(lastInstruction);
+            return opcode == LLVMRet || opcode == LLVMBr;
+        }
         return false;
+
     }
 
     @Override
@@ -237,7 +243,12 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
     @Override
     public LLVMValueRef visitBlockItem(SysYParser.BlockItemContext ctx) {
-        return visit(ctx.getChild(0));
+        if(ctx.stmt() != null) {
+            return visit(ctx.stmt());
+        } else if(ctx.decl() != null) {
+            return visit(ctx.decl());
+        }
+         return null;
     }
 
     @Override
@@ -250,10 +261,10 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             return LLVMBuildStore(builder, value, varPtr);
         }
 
-        // 处理表达式语句
-        if (ctx.exp() != null && ctx.SEMICOLON() != null && ctx.ASSIGN() == null) {
-            return visit(ctx.exp());
-        }
+//        // 处理表达式语句
+//        if (ctx.exp() != null && ctx.SEMICOLON() != null && ctx.ASSIGN() == null) {
+//            return visit(ctx.exp());
+//        }
 
         // 处理块
         if (ctx.block() != null) {
