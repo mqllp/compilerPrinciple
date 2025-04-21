@@ -36,7 +36,8 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
         LLVMValueRef lastInstruction = LLVMGetLastInstruction(block);
         if (lastInstruction != null) {
             int opcode = LLVMGetInstructionOpcode(lastInstruction);
-            return opcode == LLVMRet || opcode == LLVMBr;
+            // 检查是否为任何终止指令类型
+            return LLVMIsATerminatorInst(lastInstruction).address() != 0;
         }
         return false;
     }
@@ -226,8 +227,8 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
         for (SysYParser.BlockItemContext item : ctx.blockItem()) {
             lastValue = visit(item);
 
-            // 如果是return指令，则中断后续语句处理
-            if (lastValue != null && LLVMGetInstructionOpcode(lastValue) == LLVMRet) {
+            // 如果是终止指令，中断后续语句处理
+            if (lastValue != null && LLVMIsATerminatorInst(lastValue).address() != 0) {
                 break;
             }
         }
@@ -364,6 +365,7 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
             if (ctx.exp() != null) {
                 // 有返回值的情况
                 LLVMValueRef returnValue = visit(ctx.exp());
+                // 使用LLVMBuildRet构建return指令并返回这个指令
                 return LLVMBuildRet(builder, returnValue);
             } else {
                 // 无返回值的情况（void函数）
