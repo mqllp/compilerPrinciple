@@ -54,8 +54,8 @@ public class RISCVGenerator {
                 hasGlobals = true;
             }
 
+            // 移除.globl指示符
             String name = LLVMGetValueName(global).getString();
-            asmBuilder.op(".globl " + name);
             asmBuilder.buildLabel(name);
 
             // 处理初始化值
@@ -188,12 +188,19 @@ public class RISCVGenerator {
         }
     }
 
+    private void generateAlloca(LLVMValueRef inst) {
+        String name = LLVMGetValueName(inst).getString();
+        // 为变量分配栈或寄存器
+        // 这部分逻辑应该在寄存器分配器中实现
+    }
+
     private void generateInstruction(LLVMValueRef inst) {
         int opcode = LLVMGetInstructionOpcode(inst);
 
         switch (opcode) {
             case LLVMAlloca:
-                // 已由寄存器分配器处理栈分配
+                // 为局部变量分配栈空间
+                generateAlloca(inst);
                 break;
 
             case LLVMLoad:

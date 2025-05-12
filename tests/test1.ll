@@ -1,5 +1,4 @@
   .data
-  .globl c
 c:
   .word 0
 
