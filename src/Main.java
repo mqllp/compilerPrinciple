@@ -16,6 +16,7 @@ public class Main {
         }
         String inputFile = args[0];
         String outputFile = args[1];
+        String riscvFile = outputFile + ".s"; // RISC-V汇编文件名
 
         // 初始化LLVM
         LLVMInitializeCore(LLVMGetGlobalPassRegistry());
@@ -39,18 +40,16 @@ public class Main {
         IRGenerator generator = new IRGenerator(module, builder);
         generator.visit(tree);
 
-        // 临时IR文件路径（可选）
-        String irFile = outputFile + ".ll";
-
-        // 输出IR到临时文件（可选）
+        // 输出IR到文件
         BytePointer error = new BytePointer();
-        if (LLVMPrintModuleToFile(module, irFile, error) != 0) {
+        if (LLVMPrintModuleToFile(module, outputFile, error) != 0) {
             System.err.println("错误: " + error.getString());
         }
 
         // 生成RISC-V汇编代码
-        RISCVGenerator riscvGenerator = new RISCVGenerator(module, outputFile);
+        RISCVGenerator riscvGenerator = new RISCVGenerator(module, riscvFile);
         riscvGenerator.generate();
+        System.out.println("已生成RISC-V汇编代码: " + riscvFile);
 
         // 释放资源
         LLVMDisposeBuilder(builder);

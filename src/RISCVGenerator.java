@@ -1,475 +1,362 @@
 import org.bytedeco.llvm.LLVM.*;
-import static org.bytedeco.llvm.global.LLVM.*;
-import java.io.*;
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
+
+import static org.bytedeco.llvm.global.LLVM.*;
+import static org.bytedeco.llvm.global.LLVM.LLVMGetValueName;
 
 public class RISCVGenerator {
     private LLVMModuleRef module;
-    private String output;
+    private String outputPath;
     private AsmBuilder asmBuilder;
-    private RegisterAllocator regAllocator;
-    private Map<String, Integer> funcStackSize;
 
-    // RISC-V寄存器名称
-    private static final String[] REGISTERS = {
-            "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
-            "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
-            "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
-            "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
-    };
+    private int totalLineNum;
+    private int currentLineNum;
+    private int stackSize;
+    private int stackArraySize;
 
-    public RISCVGenerator(LLVMModuleRef module, String output) {
+    private static final List<String> allRegisters = Arrays.asList(
+            "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7",
+            "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11",
+            "t2", "t3", "t4", "t5", "t6"
+    );
+
+    private final String[] regAlloc = new String[allRegisters.size()];
+    private final String[] stackAlloc = new String[16000];
+
+    private final Map<String, int[]> varLifetime = new HashMap<>();
+
+    public RISCVGenerator(LLVMModuleRef module, String outputPath) {
         this.module = module;
-        this.output = output;
+        this.outputPath = outputPath;
         this.asmBuilder = new AsmBuilder();
-        this.regAllocator = new RegisterAllocator();
-        this.funcStackSize = new HashMap<>();
     }
 
     public void generate() {
-        // 执行寄存器分配
-        regAllocator.buildIntervals(module);
-        regAllocator.allocate();
-
-        // 生成数据段
-        generateDataSection();
-
-        // 生成代码段
-        asmBuilder.op(".text");
-        generateFunctions();
-
-        // 写入输出文件
-        writeToFile();
+        emitGlobalData();
+        emitFunctions();
+        writeOutput();
     }
 
-    private void generateDataSection() {
-        boolean hasGlobals = false;
+    private void writeOutput() {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath))) {
+            writer.write(asmBuilder.getStringBuffer().toString());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
-        for (LLVMValueRef global = LLVMGetFirstGlobal(module);
-             global != null;
-             global = LLVMGetNextGlobal(global)) {
-
-            if (!hasGlobals) {
-                asmBuilder.op(".data");
-                hasGlobals = true;
-            }
-
-            // 移除.globl指示符
+    private void emitGlobalData() {
+        asmBuilder.buildLabel(".data");
+        for (LLVMValueRef global = LLVMGetFirstGlobal(module); global != null; global = LLVMGetNextGlobal(global)) {
             String name = LLVMGetValueName(global).getString();
+            long value = LLVMConstIntGetSExtValue(LLVMGetInitializer(global));
             asmBuilder.buildLabel(name);
-
-            // 处理初始化值
-            LLVMValueRef initVal = LLVMGetInitializer(global);
-            if (initVal != null && LLVMIsConstant(initVal) == 1) {
-                long value = LLVMConstIntGetSExtValue(initVal);
-                asmBuilder.op(".word " + value);
-            } else {
-                asmBuilder.op(".word 0");
-            }
+            asmBuilder.op0(".word", String.valueOf(value));
         }
-
-        if (hasGlobals) {
-            asmBuilder.newline();
-        }
+        asmBuilder.newline();
     }
 
-    private void generateFunctions() {
-        for (LLVMValueRef func = LLVMGetFirstFunction(module);
-             func != null;
-             func = LLVMGetNextFunction(func)) {
-
-            // 跳过声明
-            if (LLVMCountBasicBlocks(func) == 0) {
-                continue;
-            }
-
+    private void emitFunctions() {
+        asmBuilder.buildLabel(".text");
+        for (LLVMValueRef func = LLVMGetFirstFunction(module); func != null; func = LLVMGetNextFunction(func)) {
             String funcName = LLVMGetValueName(func).getString();
-            asmBuilder.op(".globl " + funcName);
+            if (funcName.isEmpty()) continue;
+
+            asmBuilder.op0(".globl", funcName);
             asmBuilder.buildLabel(funcName);
 
-            // 生成函数序言
-            generateFunctionProlog(func, funcName);
+            analyzeLifetimes(func);
+            stackSize = Math.max((getMaxLiveCount() - allRegisters.size() + 3) * 4, 0);
+            stackArraySize = stackSize / 4;
 
-            // 生成基本块
-            generateBasicBlocks(func);
-        }
-    }
+            asmBuilder.op2("addi", "sp", "sp", String.valueOf(-stackSize));
 
-    private void generateFunctionProlog(LLVMValueRef func, String funcName) {
-        // 计算函数需要的栈空间
-        int stackSize = regAllocator.getStackSize();
-        stackSize = (stackSize + 15) & ~15; // 16字节对齐
-        funcStackSize.put(funcName, stackSize);
-
-        // 即使栈大小为0也生成指令
-        asmBuilder.op2("addi", "sp", "sp", "-" + stackSize);
-
-        // 如果有栈空间需要保存返回地址和帧指针
-        if (stackSize > 0) {
-            asmBuilder.op2("sw", "ra", stackSize - 4 + "(sp)", "");
-            asmBuilder.op2("sw", "s0", stackSize - 8 + "(sp)", "");
-            asmBuilder.op2("addi", "s0", "sp", String.valueOf(stackSize));
-        }
-    }
-
-    private void generateFunctionEpilog(String funcName) {
-        int stackSize = funcStackSize.getOrDefault(funcName, 0);
-
-        if (stackSize > 0) {
-            // 恢复被调用者保存的寄存器（如有必要）
-            asmBuilder.op1("lw", "ra", stackSize - 4 + "(sp)");
-            asmBuilder.op1("lw", "s0", stackSize - 8 + "(sp)");
-        }
-
-        // 释放栈空间
-        asmBuilder.op2("addi", "sp", "sp", String.valueOf(stackSize));
-
-        // main函数特殊处理 - 使用ecall而不是ret
-        if (funcName.equals("main")) {
-            asmBuilder.op1("li", "a7", "93");  // exit系统调用号
-            asmBuilder.op("ecall");
-        } else {
-            asmBuilder.op("ret");
-        }
-    }
-
-    private void generateBasicBlocks(LLVMValueRef func) {
-        String funcName = LLVMGetValueName(func).getString();
-
-        for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func);
-             bb != null;
-             bb = LLVMGetNextBasicBlock(bb)) {
-
-            String bbName = LLVMGetBasicBlockName(bb).getString();
-            asmBuilder.buildLabel(bbName);
-
-            // 生成指令
-            for (LLVMValueRef inst = LLVMGetFirstInstruction(bb);
-                 inst != null;
-                 inst = LLVMGetNextInstruction(inst)) {
-
-
-
-                // 检查是否是返回指令
-
-                // 在generateBasicBlocks方法中修改处理ret指令的部分
-                if (LLVMGetInstructionOpcode(inst) == LLVMRet) {
-                    if (LLVMGetNumOperands(inst) > 0) {
-                        // 处理返回值
-                        LLVMValueRef retVal = LLVMGetOperand(inst, 0);
-
-                        if (LLVMIsConstant(retVal) == 1) {
-                            // 常量返回值
-                            long constVal = LLVMConstIntGetSExtValue(retVal);
-                            asmBuilder.op1("li", "a0", String.valueOf(constVal));
-                        } else {
-                            // 处理变量返回值
-                            Location retLoc = regAllocator.getLocation(retVal);
-                            if (retLoc != null) {
-                                if (retLoc.isRegister()) {
-                                    asmBuilder.op1("mv", "a0", "x" + retLoc.getRegister());
-                                } else if (retLoc.isStack()) {
-                                    asmBuilder.op1("lw", "a0", retLoc.getOffset() + "(sp)");
-                                } else if (retLoc.isGlobal()) {
-                                    asmBuilder.op1("la", "t0", retLoc.getName());
-                                    asmBuilder.op1("lw", "a0", "0(t0)");
-                                }
-                            }
-                        }
-                    }
-
-                    // 生成函数结尾
-                    generateFunctionEpilog(funcName);
-                    continue; // 跳过下面的generateInstruction调用
+            int line = 0;
+            for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func); bb != null; bb = LLVMGetNextBasicBlock(bb)) {
+                asmBuilder.buildLabel(LLVMGetBasicBlockName(bb).getString());
+                for (LLVMValueRef inst = LLVMGetFirstInstruction(bb); inst != null; inst = LLVMGetNextInstruction(inst)) {
+                    handleInstruction(inst);
+                    asmBuilder.newline();
+                    releaseRegistersAt(line);
+                    line++;
+                    currentLineNum = line;
                 }
-
-                generateInstruction(inst);
             }
         }
     }
 
-    private void generateAlloca(LLVMValueRef inst) {
-        String name = LLVMGetValueName(inst).getString();
-        // 为变量分配栈或寄存器
-        // 这部分逻辑应该在寄存器分配器中实现
+    private void analyzeLifetimes(LLVMValueRef func) {
+        varLifetime.clear();
+        int line = 0;
+        for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func); bb != null; bb = LLVMGetNextBasicBlock(bb)) {
+            for (LLVMValueRef inst = LLVMGetFirstInstruction(bb); inst != null; inst = LLVMGetNextInstruction(inst)) {
+                String def = LLVMGetValueName(inst).getString();
+                if (!def.isEmpty()) varLifetime.put(def, new int[]{line, line});
+
+                for (int i = 0; i < LLVMGetNumOperands(inst); i++) {
+                    LLVMValueRef op = LLVMGetOperand(inst, i);
+                    if (op != null && LLVMIsAGlobalValue(op) == null && LLVMIsABasicBlock(op) == null) {
+                        String name = LLVMGetValueName(op).getString();
+                        if (!name.isEmpty() && varLifetime.containsKey(name)) {
+                            varLifetime.get(name)[1] = line;
+                        }
+                    }
+                }
+                line++;
+            }
+        }
+        totalLineNum = line;
     }
 
-    private void generateInstruction(LLVMValueRef inst) {
+    private int getMaxLiveCount() {
+        int max = 0;
+        for (int i = 0; i < totalLineNum; i++) {
+            int live = 0;
+            for (int[] range : varLifetime.values()) {
+                if (range[0] <= i && range[1] >= i) live++;
+            }
+            max = Math.max(max, live);
+        }
+        return max;
+    }
+
+    private void handleInstruction(LLVMValueRef inst) {
         int opcode = LLVMGetInstructionOpcode(inst);
+        int operandNum = LLVMGetNumOperands(inst);
+        LLVMValueRef op1 = operandNum > 0 ? LLVMGetOperand(inst, 0) : null;
+        LLVMValueRef op2 = operandNum > 1 ? LLVMGetOperand(inst, 1) : null;
+        LLVMValueRef op3 = operandNum > 2 ? LLVMGetOperand(inst, 2) : null;
 
         switch (opcode) {
             case LLVMAlloca:
-                // 为局部变量分配栈空间
-                generateAlloca(inst);
+                allocateRegister(LLVMGetValueName(inst).getString());
                 break;
-
-            case LLVMLoad:
-                generateLoad(inst);
-                break;
-
             case LLVMStore:
-                generateStore(inst);
+                generateStore(op1, op2);
                 break;
-
+            case LLVMLoad:
+                generateLoad(inst, op1);
+                break;
+            case LLVMRet:
+                generateReturn(op1);
+                break;
             case LLVMAdd:
-                generateBinaryOp(inst, "add");
-                break;
-
             case LLVMSub:
-                generateBinaryOp(inst, "sub");
-                break;
-
             case LLVMMul:
-                generateBinaryOp(inst, "mul");
-                break;
-
             case LLVMSDiv:
-                generateBinaryOp(inst, "div");
-                break;
-
             case LLVMSRem:
-                generateBinaryOp(inst, "rem");
+                generateBinary(inst, op1, op2, opcode);
                 break;
-
             case LLVMICmp:
-                generateICmp(inst);
+                generateICmp(inst, op1, op2);
                 break;
-
-            case LLVMCall:
-                generateCall(inst);
-                break;
-
             case LLVMBr:
-                generateBranch(inst);
+                generateBranch(inst, op1, op2, op3);
                 break;
-
-            // 其他指令...
+            case LLVMZExt:
+                generateZExt(inst, op1);
+                break;
         }
     }
 
-    private void generateLoad(LLVMValueRef inst) {
-        LLVMValueRef ptr = LLVMGetOperand(inst, 0);
-        Location destLoc = regAllocator.getLocation(inst);
-        Location ptrLoc = regAllocator.getLocation(ptr);
+    private void generateStore(LLVMValueRef val, LLVMValueRef ptr) {
+        String ptrName = LLVMGetValueName(ptr).getString();
+        String valueReg = (LLVMIsAConstantInt(val) != null)
+                ? "t0"
+                : getRegister(LLVMGetValueName(val).getString());
 
-        if (destLoc != null && ptrLoc != null) {
-            int destReg = ensureRegister(destLoc);
-
-            if (ptrLoc.isStack()) {
-                // 从栈上加载
-                asmBuilder.op1("lw", "x" + destReg, ptrLoc.getOffset() + "(sp)");
-            } else if (ptrLoc.isGlobal()) {
-                // 从全局变量加载
-                asmBuilder.op1("la", "t0", ptrLoc.getName());
-                asmBuilder.op1("lw", "x" + destReg, "0(t0)");
-            } else if (ptrLoc.isRegister()) {
-                // 从寄存器指向的内存加载
-                asmBuilder.op1("lw", "x" + destReg, "0(x" + ptrLoc.getRegister() + ")");
-            }
+        if (LLVMIsAConstantInt(val) != null) {
+            asmBuilder.op1("li", valueReg, String.valueOf(LLVMConstIntGetSExtValue(val)));
         }
+
+        int offset = allocStackSlot(ptrName);
+        asmBuilder.op1("sw", valueReg, offset + "(sp)");
     }
 
-    private void generateStore(LLVMValueRef inst) {
-        LLVMValueRef val = LLVMGetOperand(inst, 0);
-        LLVMValueRef ptr = LLVMGetOperand(inst, 1);
+    private void generateLoad(LLVMValueRef inst, LLVMValueRef ptr) {
+        String ptrName = LLVMGetValueName(ptr).getString();
+        String resultReg = allocateRegister(LLVMGetValueName(inst).getString());
+        int offset = allocStackSlot(ptrName);
+        asmBuilder.op1("lw", resultReg, offset + "(sp)");
+    }
 
-        Location valLoc = regAllocator.getLocation(val);
-        Location ptrLoc = regAllocator.getLocation(ptr);
-
-        if (valLoc != null && ptrLoc != null) {
-            int valReg;
-
-            if (LLVMIsConstant(val) == 1) {
-                // 常数值
-                long constVal = LLVMConstIntGetSExtValue(val);
-                asmBuilder.op1("li", "t0", String.valueOf(constVal));
-                valReg = 5; // t0
-            } else if (valLoc.isRegister()) {
-                valReg = valLoc.getRegister();
-            } else if (valLoc.isStack()) {
-                asmBuilder.op1("lw", "t0", valLoc.getOffset() + "(sp)");
-                valReg = 5; // t0
+    private void generateReturn(LLVMValueRef retVal) {
+        if (retVal != null) {
+            if (LLVMIsAConstantInt(retVal) != null) {
+                asmBuilder.op1("li", "a0", String.valueOf(LLVMConstIntGetSExtValue(retVal)));
             } else {
-                asmBuilder.op1("la", "t1", valLoc.getName());
-                asmBuilder.op1("lw", "t0", "0(t1)");
-                valReg = 5; // t0
+                asmBuilder.op1("mv", "a0", getRegister(LLVMGetValueName(retVal).getString()));
             }
+        }
+        asmBuilder.op2("addi", "sp", "sp", String.valueOf(stackSize));
+        asmBuilder.op1("li", "a7", "93");
+        asmBuilder.op("ecall");
+    }
 
-            if (ptrLoc.isStack()) {
-                asmBuilder.op1("sw", "x" + valReg, ptrLoc.getOffset() + "(sp)");
-            } else if (ptrLoc.isGlobal()) {
-                asmBuilder.op1("la", "t1", ptrLoc.getName());
-                asmBuilder.op1("sw", "x" + valReg, "0(t1)");
-            } else if (ptrLoc.isRegister()) {
-                asmBuilder.op1("sw", "x" + valReg, "0(x" + ptrLoc.getRegister() + ")");
-            }
+    private void generateBinary(LLVMValueRef inst, LLVMValueRef op1, LLVMValueRef op2, int opcode) {
+        String regDst = allocateRegister(LLVMGetValueName(inst).getString());
+        String regL = LLVMIsAConstantInt(op1) != null ? "t0" : getRegister(LLVMGetValueName(op1).getString());
+        String regR = LLVMIsAConstantInt(op2) != null ? "t1" : getRegister(LLVMGetValueName(op2).getString());
+
+        if (LLVMIsAConstantInt(op1) != null)
+            asmBuilder.op1("li", regL, String.valueOf(LLVMConstIntGetSExtValue(op1)));
+        if (LLVMIsAConstantInt(op2) != null)
+            asmBuilder.op1("li", regR, String.valueOf(LLVMConstIntGetSExtValue(op2)));
+
+        String opText;
+        switch (opcode) {
+            case LLVMAdd:
+                opText = "add";
+                break;
+            case LLVMSub:
+                opText = "sub";
+                break;
+            case LLVMMul:
+                opText = "mul";
+                break;
+            case LLVMSDiv:
+                opText = "div";
+                break;
+            case LLVMSRem:
+                opText = "rem";
+                break;
+            default:
+                throw new RuntimeException("Unsupported binary op");
+        }
+        asmBuilder.op2(opText, regDst, regL, regR);
+    }
+
+    private void generateICmp(LLVMValueRef inst, LLVMValueRef lhs, LLVMValueRef rhs) {
+        String regL = LLVMIsAConstantInt(lhs) != null ? "t0" : getRegister(LLVMGetValueName(lhs).getString());
+        String regR = LLVMIsAConstantInt(rhs) != null ? "t1" : getRegister(LLVMGetValueName(rhs).getString());
+        String regDst = allocateRegister(LLVMGetValueName(inst).getString());
+
+        if (LLVMIsAConstantInt(lhs) != null)
+            asmBuilder.op1("li", regL, String.valueOf(LLVMConstIntGetSExtValue(lhs)));
+        if (LLVMIsAConstantInt(rhs) != null)
+            asmBuilder.op1("li", regR, String.valueOf(LLVMConstIntGetSExtValue(rhs)));
+
+        switch (LLVMGetICmpPredicate(inst)) {
+            case LLVMIntEQ:
+                asmBuilder.op2("xor", regDst, regL, regR);
+                asmBuilder.op1("seqz", regDst, regDst);
+                break;
+            case LLVMIntNE:
+                asmBuilder.op2("xor", regDst, regL, regR);
+                asmBuilder.op1("snez", regDst, regDst);
+                break;
+            case LLVMIntSGT:
+                asmBuilder.op2("slt", regDst, regR, regL);
+                break;
+            case LLVMIntSGE:
+                asmBuilder.op2("slt", regDst, regL, regR);
+                asmBuilder.op2("xori", regDst, regDst, "1");
+                break;
+            case LLVMIntSLT:
+                asmBuilder.op2("slt", regDst, regL, regR);
+                break;
+            case LLVMIntSLE:
+                asmBuilder.op2("slt", regDst, regR, regL);
+                asmBuilder.op2("xori", regDst, regDst, "1");
+                break;
         }
     }
 
-    private void generateBinaryOp(LLVMValueRef inst, String op) {
-        LLVMValueRef lhs = LLVMGetOperand(inst, 0);
-        LLVMValueRef rhs = LLVMGetOperand(inst, 1);
-
-        Location destLoc = regAllocator.getLocation(inst);
-
-        if (destLoc != null) {
-            int destReg = ensureRegister(destLoc);
-            int lhsReg = loadOperandToRegister(lhs, 6); // t1
-            int rhsReg = loadOperandToRegister(rhs, 7); // t2
-
-            asmBuilder.op2(op, "x" + destReg, "x" + lhsReg, "x" + rhsReg);
-
-            if (destLoc.isStack()) {
-                // 结果需要存回栈
-                asmBuilder.op1("sw", "x" + destReg, destLoc.getOffset() + "(sp)");
+    private void generateBranch(LLVMValueRef inst, LLVMValueRef cond, LLVMValueRef ifTrue, LLVMValueRef ifFalse) {
+        if (ifTrue != null && ifFalse != null) {
+            String condReg = LLVMIsAConstantInt(cond) != null ? "t0" : getRegister(LLVMGetValueName(cond).getString());
+            if (LLVMIsAConstantInt(cond) != null) {
+                asmBuilder.op1("li", condReg, String.valueOf(LLVMConstIntGetSExtValue(cond)));
             }
-        }
-    }
-
-    private void generateICmp(LLVMValueRef inst) {
-        LLVMValueRef lhs = LLVMGetOperand(inst, 0);
-        LLVMValueRef rhs = LLVMGetOperand(inst, 1);
-
-        Location destLoc = regAllocator.getLocation(inst);
-        if (destLoc != null) {
-            int destReg = ensureRegister(destLoc);
-            int lhsReg = loadOperandToRegister(lhs, 6); // t1
-            int rhsReg = loadOperandToRegister(rhs, 7); // t2
-
-            // 获取比较类型
-            int predicate = LLVMGetICmpPredicate(inst);
-
-            switch (predicate) {
-                case LLVMIntEQ:  // ==
-                    asmBuilder.op2("xor", "x" + destReg, "x" + lhsReg, "x" + rhsReg);
-                    asmBuilder.op1("seqz", "x" + destReg, "x" + destReg);
-                    break;
-                case LLVMIntNE:  // !=
-                    asmBuilder.op2("xor", "x" + destReg, "x" + lhsReg, "x" + rhsReg);
-                    asmBuilder.op1("snez", "x" + destReg, "x" + destReg);
-                    break;
-                case LLVMIntSGT:  // >
-                    asmBuilder.op2("slt", "x" + destReg, "x" + rhsReg, "x" + lhsReg);
-                    break;
-                case LLVMIntSGE:  // >=
-                    asmBuilder.op2("slt", "x" + destReg, "x" + lhsReg, "x" + rhsReg);
-                    asmBuilder.op2("xori", "x" + destReg, "x" + destReg, "1");
-                    break;
-                case LLVMIntSLT:  // <
-                    asmBuilder.op2("slt", "x" + destReg, "x" + lhsReg, "x" + rhsReg);
-                    break;
-                case LLVMIntSLE:  // <=
-                    asmBuilder.op2("slt", "x" + destReg, "x" + rhsReg, "x" + lhsReg);
-                    asmBuilder.op2("xori", "x" + destReg, "x" + destReg, "1");
-                    break;
-            }
-
-            if (destLoc.isStack()) {
-                // 结果需要存回栈
-                asmBuilder.op1("sw", "x" + destReg, destLoc.getOffset() + "(sp)");
-            }
-        }
-    }
-
-    private void generateCall(LLVMValueRef inst) {
-        LLVMValueRef callee = LLVMGetCalledValue(inst);
-        String funcName = LLVMGetValueName(callee).getString();
-
-        // 保存调用者保存的寄存器（如果需要）
-
-        // 准备参数
-        int numArgs = LLVMCountParams(callee);
-        for (int i = 0; i < numArgs; i++) {
-            LLVMValueRef arg = LLVMGetOperand(inst, i);
-            int argReg = loadOperandToRegister(arg, 5 + i); // t0, t1, ...
-
-            // 将参数值移至参数寄存器
-            if (i < 8) { // RISC-V ABI: a0-a7用于前8个参数
-                asmBuilder.op1("mv", "a" + i, "x" + argReg);
-            } else {
-                // 更多的参数需要放在栈上
-                asmBuilder.op1("sw", "x" + argReg, (i - 8) * 4 + "(sp)");
-            }
-        }
-
-        // 调用函数
-        asmBuilder.op0("call", funcName);
-
-        // 处理返回值（如果有）
-        Location destLoc = regAllocator.getLocation(inst);
-        if (destLoc != null) {
-            int destReg = ensureRegister(destLoc);
-            asmBuilder.op1("mv", "x" + destReg, "a0"); // 返回值在a0中
-
-            if (destLoc.isStack()) {
-                // 结果需要存回栈
-                asmBuilder.op1("sw", "x" + destReg, destLoc.getOffset() + "(sp)");
-            }
-        }
-    }
-
-    private void generateBranch(LLVMValueRef inst) {
-        int numOperands = LLVMGetNumOperands(inst);
-
-        if (numOperands == 1) {
-            // 无条件跳转
-            LLVMValueRef target = LLVMGetOperand(inst, 0);
-            String label = LLVMGetBasicBlockName(LLVMValueAsBasicBlock(target)).getString();
-            asmBuilder.op0("j", label);
+            asmBuilder.op1("bnez", condReg, LLVMGetBasicBlockName(LLVMValueAsBasicBlock(ifTrue)).getString());
+            asmBuilder.op0("j", LLVMGetBasicBlockName(LLVMValueAsBasicBlock(ifFalse)).getString());
         } else {
-            // 条件跳转
-            LLVMValueRef cond = LLVMGetOperand(inst, 0);
-            LLVMValueRef trueBlock = LLVMGetOperand(inst, 1);
-            LLVMValueRef falseBlock = LLVMGetOperand(inst, 2);
-
-            String trueLabel = LLVMGetBasicBlockName(LLVMValueAsBasicBlock(trueBlock)).getString();
-            String falseLabel = LLVMGetBasicBlockName(LLVMValueAsBasicBlock(falseBlock)).getString();
-
-            int condReg = loadOperandToRegister(cond, 5); // t0
-
-            asmBuilder.op1("bnez", "x" + condReg, trueLabel);
-            asmBuilder.op0("j", falseLabel);
+            asmBuilder.op0("j", LLVMGetBasicBlockName(LLVMValueAsBasicBlock(cond)).getString());
         }
     }
 
-    private int loadOperandToRegister(LLVMValueRef operand, int tempReg) {
-        if (LLVMIsConstant(operand) == 1) {
-            // 常量
-            long value = LLVMConstIntGetSExtValue(operand);
-            asmBuilder.op1("li", "x" + tempReg, String.valueOf(value));
-            return tempReg;
-        }
-
-        Location loc = regAllocator.getLocation(operand);
-
-        if (loc != null) {
-            if (loc.isRegister()) {
-                return loc.getRegister();
-            } else if (loc.isStack()) {
-                asmBuilder.op1("lw", "x" + tempReg, loc.getOffset() + "(sp)");
-            } else if (loc.isGlobal()) {
-                asmBuilder.op1("la", "t3", loc.getName());
-                asmBuilder.op1("lw", "x" + tempReg, "0(t3)");
-            }
-            return tempReg;
-        }
-
-        return tempReg; // 默认返回临时寄存器
-    }
-
-    private int ensureRegister(Location loc) {
-        if (loc.isRegister()) {
-            return loc.getRegister();
+    private void generateZExt(LLVMValueRef inst, LLVMValueRef op1) {
+        String reg = allocateRegister(LLVMGetValueName(inst).getString());
+        if (LLVMIsAConstantInt(op1) != null) {
+            asmBuilder.op1("li", reg, String.valueOf(LLVMConstIntGetSExtValue(op1)));
         } else {
-            return 5; // t0作为默认临时寄存器
+            String src = getRegister(LLVMGetValueName(op1).getString());
+            asmBuilder.op2("andi", reg, src, "1");
         }
     }
 
-    private void writeToFile() {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(output))) {
-            writer.print(asmBuilder.getBuffer().toString());
-        } catch (IOException e) {
-            System.err.println("写入输出文件错误: " + e.getMessage());
+    private String allocateRegister(String var) {
+        for (int i = 0; i < allRegisters.size(); i++) {
+            if (regAlloc[i] == null) {
+                regAlloc[i] = var;
+                return allRegisters.get(i);
+            }
+        }
+        int idx = spillRegister();
+        regAlloc[idx] = var;
+        return allRegisters.get(idx);
+    }
+
+    private String getRegister(String var) {
+        for (int i = 0; i < allRegisters.size(); i++) {
+            if (var.equals(regAlloc[i])) return allRegisters.get(i);
+        }
+        int idx = spillRegister();
+        loadFromStack(var, idx);
+        regAlloc[idx] = var;
+        return allRegisters.get(idx);
+    }
+
+    private int spillRegister() {
+        for (int i = 0; i < allRegisters.size(); i++) {
+            if (regAlloc[i] != null) {
+                int offset = allocStackSlot(regAlloc[i]);
+                asmBuilder.op1("sw", allRegisters.get(i), offset + "(sp)");
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private void loadFromStack(String var, int regIndex) {
+        for (int i = stackArraySize - 1; i >= 0; i--) {
+            if (var.equals(stackAlloc[i])) {
+                stackAlloc[i] = null;
+                asmBuilder.op1("lw", allRegisters.get(regIndex), i * 4 + "(sp)");
+                return;
+            }
+        }
+    }
+
+    private int allocStackSlot(String var) {
+        for (int i = 0; i < stackAlloc.length; i++) {
+            if (var.equals(stackAlloc[i])) return i * 4;
+        }
+        for (int i = 0; i < stackAlloc.length; i++) {
+            if (stackAlloc[i] == null) {
+                stackAlloc[i] = var;
+                return i * 4;
+            }
+        }
+        throw new RuntimeException("Stack overflow: " + var);
+    }
+
+    private void releaseRegistersAt(int line) {
+        for (int i = 0; i < allRegisters.size(); i++) {
+            String var = regAlloc[i];
+            if (var != null && varLifetime.containsKey(var) && varLifetime.get(var)[1] < line) {
+                regAlloc[i] = null;
+            }
+        }
+        for (int i = 0; i < stackArraySize; i++) {
+            String var = stackAlloc[i];
+            if (var != null && varLifetime.containsKey(var) && varLifetime.get(var)[1] < line) {
+                stackAlloc[i] = null;
+            }
         }
     }
 }

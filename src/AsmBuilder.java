@@ -1,24 +1,20 @@
 public class AsmBuilder {
-    public AsmBuilder() {
-        this.buffer = new StringBuilder();
+    AsmBuilder(){
+        this.buffer = new StringBuffer();
     }
 
-    private StringBuilder buffer;
+    private StringBuffer buffer;
 
-    public StringBuilder getBuffer() {
+    public StringBuffer getStringBuffer(){
         return this.buffer;
     }
 
-    public void buildLabel(String labelText) {
+    public void buildLabel(String labelText){
         buffer.append(labelText).append(":\n");
     }
 
     public void op2(String op, String dest, String lhs, String rhs) {
-        if (rhs != null && !rhs.isEmpty()) {
-            buffer.append(String.format("  %s %s, %s, %s\n", op, dest, lhs, rhs));
-        } else {
-            buffer.append(String.format("  %s %s, %s\n", op, dest, lhs));
-        }
+        buffer.append(String.format("  %s %s, %s, %s\n", op, dest, lhs, rhs));
     }
 
     public void op1(String op, String dest, String lhs) {
