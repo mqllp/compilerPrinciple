@@ -164,7 +164,6 @@ public class RISCVGenerator {
     }
 
     private void generateStore(LLVMValueRef val, LLVMValueRef ptr) {
-        String ptrName = LLVMGetValueName(ptr).getString();
         String valueReg = (LLVMIsAConstantInt(val) != null)
                 ? "t0"
                 : getRegister(LLVMGetValueName(val).getString());
@@ -173,16 +172,36 @@ public class RISCVGenerator {
             asmBuilder.op1("li", valueReg, String.valueOf(LLVMConstIntGetSExtValue(val)));
         }
 
-        int offset = allocStackSlot(ptrName);
-        asmBuilder.op1("sw", valueReg, offset + "(sp)");
+        if (LLVMIsAGlobalValue(ptr) != null) {
+            // 存储到全局变量
+            String globalName = LLVMGetValueName(ptr).getString();
+            asmBuilder.op1("la", "t1", globalName);
+            asmBuilder.op1("sw", valueReg, "0(t1)");
+        } else {
+            // 存储到局部变量（栈）
+            String ptrName = LLVMGetValueName(ptr).getString();
+            int offset = allocStackSlot(ptrName);
+            asmBuilder.op1("sw", valueReg, offset + "(sp)");
+        }
     }
 
+
     private void generateLoad(LLVMValueRef inst, LLVMValueRef ptr) {
-        String ptrName = LLVMGetValueName(ptr).getString();
-        String resultReg = allocateRegister(LLVMGetValueName(inst).getString());
-        int offset = allocStackSlot(ptrName);
-        asmBuilder.op1("lw", resultReg, offset + "(sp)");
+        String destReg = allocateRegister(LLVMGetValueName(inst).getString());
+
+        if (LLVMIsAGlobalValue(ptr) != null) {
+            // 是全局变量
+            String globalName = LLVMGetValueName(ptr).getString();
+            asmBuilder.op1("la", "t0", globalName);
+            asmBuilder.op1("lw", destReg, "0(t0)");
+        } else {
+            // 局部变量
+            String ptrName = LLVMGetValueName(ptr).getString();
+            int offset = allocStackSlot(ptrName);
+            asmBuilder.op1("lw", destReg, offset + "(sp)");
+        }
     }
+
 
     private void generateReturn(LLVMValueRef retVal) {
         if (retVal != null) {
