@@ -1,69 +1,75 @@
 import org.bytedeco.llvm.LLVM.*;
-import org.bytedeco.javacpp.BytePointer;
-
+import static org.bytedeco.llvm.global.LLVM.*;
 import java.io.*;
 import java.util.*;
-import static org.bytedeco.llvm.global.LLVM.*;
 
 public class RISCVGenerator {
     private LLVMModuleRef module;
     private String output;
-    private StringBuilder assemblyCode;
-    private Map<String, Integer> variableOffsets; // 记录局部变量在栈中的偏移量
-    private int currentStackOffset;
-    private Map<LLVMValueRef, Integer> valueToRegister; // 值到寄存器的映射
-    private RegisterAllocator registerAllocator; // 添加寄存器分配器
-    private int nextRegId = 0;
+    private AsmBuilder asmBuilder;
+    private RegisterAllocator regAllocator;
+    private Map<String, Integer> funcStackSize;
+
+    // RISC-V寄存器名称
+    private static final String[] REGISTERS = {
+            "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
+            "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
+            "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
+            "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
+    };
 
     public RISCVGenerator(LLVMModuleRef module, String output) {
         this.module = module;
         this.output = output;
-        this.assemblyCode = new StringBuilder();
-        this.variableOffsets = new HashMap<>();
-        this.valueToRegister = new HashMap<>();
-        this.registerAllocator = new RegisterAllocator(); // 初始化寄存器分配器
+        this.asmBuilder = new AsmBuilder();
+        this.regAllocator = new RegisterAllocator();
+        this.funcStackSize = new HashMap<>();
     }
 
     public void generate() {
-        // 构建活跃区间并执行寄存器分配
-        registerAllocator.buildIntervals(module);
-        registerAllocator.allocate();
+        // 执行寄存器分配
+        regAllocator.buildIntervals(module);
+        regAllocator.allocate();
 
-        assemblyCode.append("  .text\n");
+        // 生成数据段
+        generateDataSection();
 
-        // 处理全局变量
-        boolean hasGlobals = LLVMGetFirstGlobal(module) != null;
-        if (hasGlobals) {
-            assemblyCode.append("  .data\n");
-            generateGlobalVariables();
-        }
-
-        // 处理所有函数
+        // 生成代码段
+        asmBuilder.op(".text");
         generateFunctions();
 
         // 写入输出文件
         writeToFile();
     }
 
-    private void generateGlobalVariables() {
-//        assemblyCode.append("  .data\n");
+    private void generateDataSection() {
+        boolean hasGlobals = false;
 
         for (LLVMValueRef global = LLVMGetFirstGlobal(module);
              global != null;
              global = LLVMGetNextGlobal(global)) {
 
-            String name = LLVMGetValueName(global).getString();
-            assemblyCode.append("  .globl ").append(name).append("\n");
-            assemblyCode.append(name).append(":\n");
+            if (!hasGlobals) {
+                asmBuilder.op(".data");
+                hasGlobals = true;
+            }
 
-            // 获取初始化值
+            String name = LLVMGetValueName(global).getString();
+            asmBuilder.op(".globl " + name);
+            asmBuilder.buildLabel(name);
+
+            // 处理初始化值
             LLVMValueRef initVal = LLVMGetInitializer(global);
             if (initVal != null && LLVMIsConstant(initVal) == 1) {
                 long value = LLVMConstIntGetSExtValue(initVal);
-                assemblyCode.append("  .word ").append(value).append("\n");
+                asmBuilder.op(".word " + value);
             } else {
-                assemblyCode.append("  .word 0\n"); // 默认值
+                asmBuilder.op(".word 0");
             }
+        }
+
+        if (hasGlobals) {
+            asmBuilder.newline();
         }
     }
 
@@ -72,417 +78,372 @@ public class RISCVGenerator {
              func != null;
              func = LLVMGetNextFunction(func)) {
 
-            String name = LLVMGetValueName(func).getString();
-
-            // 检查函数是否有定义体
-            if (LLVMCountBasicBlocks(func) > 0) {
-                generateFunction(func, name);
+            // 跳过声明
+            if (LLVMCountBasicBlocks(func) == 0) {
+                continue;
             }
+
+            String funcName = LLVMGetValueName(func).getString();
+            asmBuilder.op(".globl " + funcName);
+            asmBuilder.buildLabel(funcName);
+
+            // 生成函数序言
+            generateFunctionProlog(func, funcName);
+
+            // 生成基本块
+            generateBasicBlocks(func);
         }
     }
 
-    private void generateFunction(LLVMValueRef func, String name) {
-        // 重置函数状态
-        variableOffsets.clear();
-        currentStackOffset = 0;
-        valueToRegister.clear();
-        nextRegId = 0;
+    private void generateFunctionProlog(LLVMValueRef func, String funcName) {
+        // 计算函数需要的栈空间
+        int stackSize = regAllocator.getStackSize();
+        stackSize = (stackSize + 15) & ~15; // 16字节对齐
+        funcStackSize.put(funcName, stackSize);
 
-        // 生成函数标签
-        assemblyCode.append("  .text\n");
-        assemblyCode.append("  .globl ").append(name).append("\n");
-        assemblyCode.append(name).append(":\n");
+        // 保存返回地址和帧指针
+        if (stackSize > 0) {
+            asmBuilder.op2("addi", "sp", "sp", "-" + stackSize);
+            asmBuilder.op2("sw", "ra", stackSize - 4 + "(sp)", "sp");
+            asmBuilder.op2("sw", "s0", stackSize - 8 + "(sp)", "sp");
+            asmBuilder.op2("addi", "s0", "sp", String.valueOf(stackSize));
 
-        // 针对main函数简化栈帧处理
-        if ("main".equals(name)) {
-            assemblyCode.append("  addi sp, sp, 0\n");  // 简化的栈帧空间
-        } else {
-            // 非main函数的标准序言
-            assemblyCode.append("  addi sp, sp, -32\n");
-            assemblyCode.append("  sw ra, 28(sp)\n");
-            assemblyCode.append("  sw s0, 24(sp)\n");
-            assemblyCode.append("  addi s0, sp, 32\n");
+            // 保存被调用者保存的寄存器（如有必要）
+            // ...
+        }
+    }
+
+    private void generateFunctionEpilog(String funcName) {
+        int stackSize = funcStackSize.getOrDefault(funcName, 0);
+
+        if (stackSize > 0) {
+            // 恢复被调用者保存的寄存器（如有必要）
+            // ...
+
+            asmBuilder.op1("lw", "ra", stackSize - 4 + "(sp)");
+            asmBuilder.op1("lw", "s0", stackSize - 8 + "(sp)");
+            asmBuilder.op2("addi", "sp", "sp", String.valueOf(stackSize));
         }
 
-        // 处理函数的所有基本块
+        asmBuilder.op("ret");
+    }
+
+    private void generateBasicBlocks(LLVMValueRef func) {
+        String funcName = LLVMGetValueName(func).getString();
+
         for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func);
              bb != null;
              bb = LLVMGetNextBasicBlock(bb)) {
-            generateBasicBlock(bb);
-        }
-    }
 
-    private void generateBasicBlock(LLVMBasicBlockRef bb) {
-        // 获取基本块名称并生成标签
-        String bbName = LLVMGetBasicBlockName(bb).getString();
-        assemblyCode.append(bbName).append(":\n");
+            String bbName = LLVMGetBasicBlockName(bb).getString();
+            asmBuilder.buildLabel(bbName);
 
-        // 处理基本块中的所有指令
-        for (LLVMValueRef inst = LLVMGetFirstInstruction(bb);
-             inst != null;
-             inst = LLVMGetNextInstruction(inst)) {
+            // 生成指令
+            for (LLVMValueRef inst = LLVMGetFirstInstruction(bb);
+                 inst != null;
+                 inst = LLVMGetNextInstruction(inst)) {
 
-            generateInstruction(inst);
+                generateInstruction(inst);
+
+                // 检查是否是返回指令
+                if (LLVMGetInstructionOpcode(inst) == LLVMRet) {
+                    if (LLVMGetNumOperands(inst) > 0) {
+                        // 处理返回值
+                        LLVMValueRef retVal = LLVMGetOperand(inst, 0);
+                        Location retLoc = regAllocator.getLocation(retVal);
+
+                        if (retLoc != null) {
+                            if (retLoc.isRegister()) {
+                                asmBuilder.op1("mv", "a0", "x" + retLoc.getRegister());
+                            } else if (retLoc.isStack()) {
+                                asmBuilder.op1("lw", "a0", retLoc.getOffset() + "(sp)");
+                            } else if (retLoc.isGlobal()) {
+                                asmBuilder.op1("la", "t0", retLoc.getName());
+                                asmBuilder.op1("lw", "a0", "0(t0)");
+                            }
+                        }
+                    }
+
+                    // 生成函数结尾
+                    generateFunctionEpilog(funcName);
+                }
+            }
         }
     }
 
     private void generateInstruction(LLVMValueRef inst) {
-        // 获取指令类型
         int opcode = LLVMGetInstructionOpcode(inst);
 
         switch (opcode) {
-            case LLVMRet:
-                generateRetInstruction(inst);
-                break;
             case LLVMAlloca:
-                generateAllocaInstruction(inst);
+                // 已由寄存器分配器处理栈分配
                 break;
+
             case LLVMLoad:
-                generateLoadInstruction(inst);
+                generateLoad(inst);
                 break;
+
             case LLVMStore:
-                generateStoreInstruction(inst);
+                generateStore(inst);
                 break;
+
             case LLVMAdd:
-                generateBinaryOpInstruction(inst, "add");
+                generateBinaryOp(inst, "add");
                 break;
+
             case LLVMSub:
-                generateBinaryOpInstruction(inst, "sub");
+                generateBinaryOp(inst, "sub");
                 break;
+
             case LLVMMul:
-                generateBinaryOpInstruction(inst, "mul");
+                generateBinaryOp(inst, "mul");
                 break;
+
             case LLVMSDiv:
-                generateBinaryOpInstruction(inst, "div");
+                generateBinaryOp(inst, "div");
                 break;
-            default:
-                // 暂不支持的指令
-                assemblyCode.append("  # 未实现指令: ").append(opcode).append("\n");
+
+            case LLVMSRem:
+                generateBinaryOp(inst, "rem");
+                break;
+
+            case LLVMICmp:
+                generateICmp(inst);
+                break;
+
+            case LLVMCall:
+                generateCall(inst);
+                break;
+
+            case LLVMBr:
+                generateBranch(inst);
+                break;
+
+            // 其他指令...
         }
     }
 
-    // 具体指令生成方法...
+    private void generateLoad(LLVMValueRef inst) {
+        LLVMValueRef ptr = LLVMGetOperand(inst, 0);
+        Location destLoc = regAllocator.getLocation(inst);
+        Location ptrLoc = regAllocator.getLocation(ptr);
 
-    private void generateRetInstruction(LLVMValueRef inst) {
-        // 获取函数名
-        LLVMValueRef function = LLVMGetBasicBlockParent(LLVMGetInstructionParent(inst));
-        String funcName = LLVMGetValueName(function).getString();
+        if (destLoc != null && ptrLoc != null) {
+            int destReg = ensureRegister(destLoc);
 
-        // 处理返回值
-        if (LLVMGetNumOperands(inst) > 0) {
-            LLVMValueRef retValue = LLVMGetOperand(inst, 0);
-
-            if (LLVMIsConstant(retValue) == 1) {
-                // 常量返回值
-                long value = LLVMConstIntGetSExtValue(retValue);
-                assemblyCode.append("  li a0, ").append(value).append("\n");
-            } else {
-                // 变量返回值
-                Location location = registerAllocator.getLocation(retValue);
-
-                if (location != null) {
-                    if (location.isRegister()) {
-                        assemblyCode.append("  mv a0, x").append(location.getRegister()).append("\n");
-                    } else if (location.isStack()) {
-                        assemblyCode.append("  lw a0, ").append(location.getOffset()).append("(sp)\n");
-                    } else if (location.isGlobal()) {
-                        assemblyCode.append("  la t0, ").append(location.getName()).append("\n");
-                        assemblyCode.append("  lw a0, 0(t0)\n");
-                    }
-                } else {
-                    assemblyCode.append("  # 警告: 未找到返回值的位置\n");
-                }
-            }
-        }
-
-        // 处理函数返回
-        if ("main".equals(funcName)) {
-            // main函数使用系统调用退出
-            assemblyCode.append("  addi sp, sp, ").append(registerAllocator.getStackSize()).append("\n");
-            assemblyCode.append("  li a7, 93\n");
-            assemblyCode.append("  ecall\n");
-        } else {
-            // 普通函数返回
-            assemblyCode.append("  lw ra, 0(sp)\n");
-            assemblyCode.append("  addi sp, sp, ").append(registerAllocator.getStackSize()).append("\n");
-            assemblyCode.append("  ret\n");
-        }
-    }
-
-    private void generateAllocaInstruction(LLVMValueRef inst) {
-        // 获取分配的变量名
-        String name = LLVMGetValueName(inst).getString();
-
-        // 为局部变量分配栈空间（4字节对齐）
-        currentStackOffset -= 4;
-        variableOffsets.put(name, currentStackOffset);
-
-        // 在栈上分配空间，并初始化为0
-        assemblyCode.append("  # 分配局部变量 ").append(name).append("\n");
-        assemblyCode.append("  addi sp, sp, -4\n");
-        assemblyCode.append("  sw zero, 0(sp)\n");
-    }
-
-    private void generateLoadInstruction(LLVMValueRef inst) {
-        // 获取源操作数
-        LLVMValueRef source = LLVMGetOperand(inst, 0);
-
-        // 获取目标位置和源位置
-        Location destLocation = registerAllocator.getLocation(inst);
-        Location sourceLocation = registerAllocator.getLocation(source);
-
-        if (destLocation == null) {
-            assemblyCode.append("  # 警告: 目标变量没有分配位置\n");
-            return;
-        }
-
-        int destReg;
-        if (destLocation.isRegister()) {
-            destReg = destLocation.getRegister();
-        } else {
-            // 如果目标不是寄存器，使用临时寄存器
-            destReg = 5; // t0
-        }
-
-        // 根据源的位置加载数据
-        if (isGlobalVariable(source)) {
-            // 从全局变量加载
-            String sourceName = LLVMGetValueName(source).getString();
-            assemblyCode.append("  la t3, ").append(sourceName).append("\n");
-            assemblyCode.append("  lw x").append(destReg).append(", 0(t3)\n");
-        } else if (sourceLocation != null) {
-            if (sourceLocation.isRegister()) {
-                // 从寄存器加载
-                assemblyCode.append("  mv x").append(destReg)
-                        .append(", x").append(sourceLocation.getRegister()).append("\n");
-            } else if (sourceLocation.isStack()) {
-                // 从栈加载
-                assemblyCode.append("  lw x").append(destReg).append(", ")
-                        .append(sourceLocation.getOffset()).append("(sp)\n");
-            } else if (sourceLocation.isGlobal()) {
+            if (ptrLoc.isStack()) {
+                // 从栈上加载
+                asmBuilder.op1("lw", "x" + destReg, ptrLoc.getOffset() + "(sp)");
+            } else if (ptrLoc.isGlobal()) {
                 // 从全局变量加载
-                assemblyCode.append("  la t3, ").append(sourceLocation.getName()).append("\n");
-                assemblyCode.append("  lw x").append(destReg).append(", 0(t3)\n");
-            }
-        } else {
-            String sourceName = LLVMGetValueName(source).getString();
-            assemblyCode.append("  # 警告: 未找到变量 ").append(sourceName).append(" 的位置\n");
-        }
-
-        // 如果目标位置在栈上，需要将结果存回栈
-        if (destLocation.isStack()) {
-            assemblyCode.append("  sw x").append(destReg).append(", ")
-                    .append(destLocation.getOffset()).append("(sp)\n");
-        }
-    }
-
-    private void generateStoreInstruction(LLVMValueRef inst) {
-        // 获取源值和目标地址
-        LLVMValueRef value = LLVMGetOperand(inst, 0);
-        LLVMValueRef pointer = LLVMGetOperand(inst, 1);
-
-        // 获取目标位置
-        Location pointerLocation = registerAllocator.getLocation(pointer);
-
-        // 处理源值
-        if (LLVMIsConstant(value) == 1) {
-            // 常量值
-            long constValue = LLVMConstIntGetSExtValue(value);
-            assemblyCode.append("  # 存储常量 ").append(constValue).append("\n");
-            assemblyCode.append("  li t0, ").append(constValue).append("\n");
-
-            if (isGlobalVariable(pointer)) {
-                // 存储到全局变量
-                String destName = LLVMGetValueName(pointer).getString();
-                assemblyCode.append("  la t1, ").append(destName).append("\n");
-                assemblyCode.append("  sw t0, 0(t1)\n");
-            } else if (pointerLocation != null) {
-                if (pointerLocation.isRegister()) {
-                    // 存储到寄存器指向的内存
-                    assemblyCode.append("  sw t0, 0(x").append(pointerLocation.getRegister()).append(")\n");
-                } else if (pointerLocation.isStack()) {
-                    // 存储到栈位置
-                    assemblyCode.append("  sw t0, ").append(pointerLocation.getOffset()).append("(sp)\n");
-                }
-            }
-        } else {
-            // 变量值
-            Location valueLocation = registerAllocator.getLocation(value);
-
-            if (valueLocation != null) {
-                int srcReg;
-
-                if (valueLocation.isRegister()) {
-                    // 源值在寄存器中
-                    srcReg = valueLocation.getRegister();
-                } else {
-                    // 源值在栈或全局变量中，需要先加载到临时寄存器
-                    srcReg = 5; // 使用t0临时寄存器
-
-                    if (valueLocation.isStack()) {
-                        assemblyCode.append("  lw x").append(srcReg).append(", ")
-                                .append(valueLocation.getOffset()).append("(sp)\n");
-                    } else if (valueLocation.isGlobal()) {
-                        assemblyCode.append("  la t1, ").append(valueLocation.getName()).append("\n");
-                        assemblyCode.append("  lw x").append(srcReg).append(", 0(t1)\n");
-                    }
-                }
-
-                // 执行存储
-                if (isGlobalVariable(pointer)) {
-                    String destName = LLVMGetValueName(pointer).getString();
-                    assemblyCode.append("  la t1, ").append(destName).append("\n");
-                    assemblyCode.append("  sw x").append(srcReg).append(", 0(t1)\n");
-                } else if (pointerLocation != null) {
-                    if (pointerLocation.isRegister()) {
-                        assemblyCode.append("  sw x").append(srcReg).append(", 0(x")
-                                .append(pointerLocation.getRegister()).append(")\n");
-                    } else if (pointerLocation.isStack()) {
-                        assemblyCode.append("  sw x").append(srcReg).append(", ")
-                                .append(pointerLocation.getOffset()).append("(sp)\n");
-                    }
-                }
+                asmBuilder.op1("la", "t0", ptrLoc.getName());
+                asmBuilder.op1("lw", "x" + destReg, "0(t0)");
+            } else if (ptrLoc.isRegister()) {
+                // 从寄存器指向的内存加载
+                asmBuilder.op1("lw", "x" + destReg, "0(x" + ptrLoc.getRegister() + ")");
             }
         }
     }
 
-    private void generateBinaryOpInstruction(LLVMValueRef inst, String op) {
-        // 获取操作数
+    private void generateStore(LLVMValueRef inst) {
+        LLVMValueRef val = LLVMGetOperand(inst, 0);
+        LLVMValueRef ptr = LLVMGetOperand(inst, 1);
+
+        Location valLoc = regAllocator.getLocation(val);
+        Location ptrLoc = regAllocator.getLocation(ptr);
+
+        if (valLoc != null && ptrLoc != null) {
+            int valReg;
+
+            if (LLVMIsConstant(val) == 1) {
+                // 常数值
+                long constVal = LLVMConstIntGetSExtValue(val);
+                asmBuilder.op1("li", "t0", String.valueOf(constVal));
+                valReg = 5; // t0
+            } else if (valLoc.isRegister()) {
+                valReg = valLoc.getRegister();
+            } else if (valLoc.isStack()) {
+                asmBuilder.op1("lw", "t0", valLoc.getOffset() + "(sp)");
+                valReg = 5; // t0
+            } else {
+                asmBuilder.op1("la", "t1", valLoc.getName());
+                asmBuilder.op1("lw", "t0", "0(t1)");
+                valReg = 5; // t0
+            }
+
+            if (ptrLoc.isStack()) {
+                asmBuilder.op1("sw", "x" + valReg, ptrLoc.getOffset() + "(sp)");
+            } else if (ptrLoc.isGlobal()) {
+                asmBuilder.op1("la", "t1", ptrLoc.getName());
+                asmBuilder.op1("sw", "x" + valReg, "0(t1)");
+            } else if (ptrLoc.isRegister()) {
+                asmBuilder.op1("sw", "x" + valReg, "0(x" + ptrLoc.getRegister() + ")");
+            }
+        }
+    }
+
+    private void generateBinaryOp(LLVMValueRef inst, String op) {
         LLVMValueRef lhs = LLVMGetOperand(inst, 0);
         LLVMValueRef rhs = LLVMGetOperand(inst, 1);
 
-        // 获取结果位置
-        Location resultLocation = registerAllocator.getLocation(inst);
-        if (resultLocation == null) {
-            assemblyCode.append("  # 警告: 结果没有分配位置\n");
-            return;
-        }
+        Location destLoc = regAllocator.getLocation(inst);
 
-        int destReg;
-        if (resultLocation.isRegister()) {
-            destReg = resultLocation.getRegister();
-        } else {
-            // 如果结果不是寄存器，使用临时寄存器
-            destReg = 5; // t0
-        }
+        if (destLoc != null) {
+            int destReg = ensureRegister(destLoc);
+            int lhsReg = loadOperandToRegister(lhs, 6); // t1
+            int rhsReg = loadOperandToRegister(rhs, 7); // t2
 
-        // 加载左操作数到寄存器
-        int leftReg = loadOperandWithAllocator(lhs, 6); // t1
+            asmBuilder.op2(op, "x" + destReg, "x" + lhsReg, "x" + rhsReg);
 
-        // 加载右操作数到寄存器
-        int rightReg = loadOperandWithAllocator(rhs, 7); // t2
-
-        // 生成运算指令
-        assemblyCode.append("  ").append(op).append(" x").append(destReg)
-                .append(", x").append(leftReg).append(", x").append(rightReg).append("\n");
-
-        // 如果结果位置在栈上，则需要存储结果
-        if (!resultLocation.isRegister()) {
-            if (resultLocation.isStack()) {
-                assemblyCode.append("  sw x").append(destReg).append(", ")
-                        .append(resultLocation.getOffset()).append("(sp)\n");
+            if (destLoc.isStack()) {
+                // 结果需要存回栈
+                asmBuilder.op1("sw", "x" + destReg, destLoc.getOffset() + "(sp)");
             }
         }
     }
 
-    // 辅助方法：使用RegisterAllocator加载操作数到寄存器
-    private int loadOperandWithAllocator(LLVMValueRef operand, int tempReg) {
-        if (LLVMIsConstant(operand) == 1) {
-            // 常量操作数
-            long value = LLVMConstIntGetSExtValue(operand);
-            assemblyCode.append("  li x").append(tempReg).append(", ").append(value).append("\n");
-            return tempReg;
-        } else {
-            // 变量操作数
-            Location location = registerAllocator.getLocation(operand);
+    private void generateICmp(LLVMValueRef inst) {
+        LLVMValueRef lhs = LLVMGetOperand(inst, 0);
+        LLVMValueRef rhs = LLVMGetOperand(inst, 1);
 
-            if (location != null) {
-                if (location.isRegister()) {
-                    // 直接使用已分配的寄存器
-                    return location.getRegister();
-                } else if (location.isStack()) {
-                    // 从栈加载到临时寄存器
-                    assemblyCode.append("  lw x").append(tempReg).append(", ")
-                            .append(location.getOffset()).append("(sp)\n");
-                    return tempReg;
-                } else if (location.isGlobal()) {
-                    // 从全局变量加载到临时寄存器
-                    assemblyCode.append("  la t3, ").append(location.getName()).append("\n");
-                    assemblyCode.append("  lw x").append(tempReg).append(", 0(t3)\n");
-                    return tempReg;
-                }
+        Location destLoc = regAllocator.getLocation(inst);
+        if (destLoc != null) {
+            int destReg = ensureRegister(destLoc);
+            int lhsReg = loadOperandToRegister(lhs, 6); // t1
+            int rhsReg = loadOperandToRegister(rhs, 7); // t2
+
+            // 获取比较类型
+            int predicate = LLVMGetICmpPredicate(inst);
+
+            switch (predicate) {
+                case LLVMIntEQ:  // ==
+                    asmBuilder.op2("xor", "x" + destReg, "x" + lhsReg, "x" + rhsReg);
+                    asmBuilder.op1("seqz", "x" + destReg, "x" + destReg);
+                    break;
+                case LLVMIntNE:  // !=
+                    asmBuilder.op2("xor", "x" + destReg, "x" + lhsReg, "x" + rhsReg);
+                    asmBuilder.op1("snez", "x" + destReg, "x" + destReg);
+                    break;
+                case LLVMIntSGT:  // >
+                    asmBuilder.op2("slt", "x" + destReg, "x" + rhsReg, "x" + lhsReg);
+                    break;
+                case LLVMIntSGE:  // >=
+                    asmBuilder.op2("slt", "x" + destReg, "x" + lhsReg, "x" + rhsReg);
+                    asmBuilder.op2("xori", "x" + destReg, "x" + destReg, "1");
+                    break;
+                case LLVMIntSLT:  // <
+                    asmBuilder.op2("slt", "x" + destReg, "x" + lhsReg, "x" + rhsReg);
+                    break;
+                case LLVMIntSLE:  // <=
+                    asmBuilder.op2("slt", "x" + destReg, "x" + rhsReg, "x" + lhsReg);
+                    asmBuilder.op2("xori", "x" + destReg, "x" + destReg, "1");
+                    break;
             }
 
-            // 如果没有找到位置，给出警告
-            String name = LLVMGetValueName(operand).getString();
-            assemblyCode.append("  # 警告: 未找到变量 ").append(name).append(" 的位置\n");
-            return tempReg;
+            if (destLoc.isStack()) {
+                // 结果需要存回栈
+                asmBuilder.op1("sw", "x" + destReg, destLoc.getOffset() + "(sp)");
+            }
         }
     }
 
-    // 辅助方法：将操作数加载到寄存器
-    private int loadOperandToRegister(LLVMValueRef operand, int tempIndex) {
-        if (LLVMIsConstant(operand) == 1) {
-            // 常量操作数
-            long value = LLVMConstIntGetSExtValue(operand);
-            assemblyCode.append("  li t").append(tempIndex + 2).append(", ").append(value).append("\n");
-            return tempIndex + 2;
-        } else {
-            // 变量操作数
-            Integer reg = valueToRegister.get(operand);
-            if (reg != null) {
-                return reg;
+    private void generateCall(LLVMValueRef inst) {
+        LLVMValueRef callee = LLVMGetCalledValue(inst);
+        String funcName = LLVMGetValueName(callee).getString();
+
+        // 保存调用者保存的寄存器（如果需要）
+
+        // 准备参数
+        int numArgs = LLVMCountParams(callee);
+        for (int i = 0; i < numArgs; i++) {
+            LLVMValueRef arg = LLVMGetOperand(inst, i);
+            int argReg = loadOperandToRegister(arg, 5 + i); // t0, t1, ...
+
+            // 将参数值移至参数寄存器
+            if (i < 8) { // RISC-V ABI: a0-a7用于前8个参数
+                asmBuilder.op1("mv", "a" + i, "x" + argReg);
             } else {
-                // 尝试加载变量
-                String name = LLVMGetValueName(operand).getString();
-                assemblyCode.append("  # 加载变量 ").append(name).append(" 到寄存器\n");
+                // 更多的参数需要放在栈上
+                asmBuilder.op1("sw", "x" + argReg, (i - 8) * 4 + "(sp)");
+            }
+        }
 
-                if (isGlobalVariable(operand)) {
-                    assemblyCode.append("  la t1, ").append(name).append("\n");
-                    assemblyCode.append("  lw t").append(tempIndex + 2).append(", 0(t1)\n");
-                } else {
-                    Integer offset = variableOffsets.get(name);
-                    if (offset != null) {
-                        assemblyCode.append("  lw t").append(tempIndex + 2)
-                                .append(", ").append(offset).append("(s0)\n");
-                    } else {
-                        assemblyCode.append("  # 警告: 未找到变量 ").append(name).append("\n");
-                    }
-                }
-                return tempIndex + 2;
+        // 调用函数
+        asmBuilder.op0("call", funcName);
+
+        // 处理返回值（如果有）
+        Location destLoc = regAllocator.getLocation(inst);
+        if (destLoc != null) {
+            int destReg = ensureRegister(destLoc);
+            asmBuilder.op1("mv", "x" + destReg, "a0"); // 返回值在a0中
+
+            if (destLoc.isStack()) {
+                // 结果需要存回栈
+                asmBuilder.op1("sw", "x" + destReg, destLoc.getOffset() + "(sp)");
             }
         }
     }
 
-    // 为值获取或创建一个寄存器
-    private int getOrCreateRegister(LLVMValueRef value) {
-        return valueToRegister.computeIfAbsent(value, k -> ++nextRegId);
-    }
+    private void generateBranch(LLVMValueRef inst) {
+        int numOperands = LLVMGetNumOperands(inst);
 
-    // 检查值是否为全局变量
-    private boolean isGlobalVariable(LLVMValueRef value) {
-        if (value == null) return false;
+        if (numOperands == 1) {
+            // 无条件跳转
+            LLVMValueRef target = LLVMGetOperand(inst, 0);
+            String label = LLVMGetBasicBlockName(LLVMValueAsBasicBlock(target)).getString();
+            asmBuilder.op0("j", label);
+        } else {
+            // 条件跳转
+            LLVMValueRef cond = LLVMGetOperand(inst, 0);
+            LLVMValueRef trueBlock = LLVMGetOperand(inst, 1);
+            LLVMValueRef falseBlock = LLVMGetOperand(inst, 2);
 
-        // 遍历模块的所有全局变量
-        for (LLVMValueRef global = LLVMGetFirstGlobal(module);
-             global != null;
-             global = LLVMGetNextGlobal(global)) {
+            String trueLabel = LLVMGetBasicBlockName(LLVMValueAsBasicBlock(trueBlock)).getString();
+            String falseLabel = LLVMGetBasicBlockName(LLVMValueAsBasicBlock(falseBlock)).getString();
 
-            if (global.equals(value)) {
-                return true;
-            }
+            int condReg = loadOperandToRegister(cond, 5); // t0
+
+            asmBuilder.op1("bnez", "x" + condReg, trueLabel);
+            asmBuilder.op0("j", falseLabel);
         }
-        return false;
     }
 
-    private int getRegister(LLVMValueRef value) {
-        // 简单的寄存器分配
-        return valueToRegister.computeIfAbsent(value, k -> ++nextRegId);
+    private int loadOperandToRegister(LLVMValueRef operand, int tempReg) {
+        if (LLVMIsConstant(operand) == 1) {
+            // 常量
+            long value = LLVMConstIntGetSExtValue(operand);
+            asmBuilder.op1("li", "x" + tempReg, String.valueOf(value));
+            return tempReg;
+        }
+
+        Location loc = regAllocator.getLocation(operand);
+
+        if (loc != null) {
+            if (loc.isRegister()) {
+                return loc.getRegister();
+            } else if (loc.isStack()) {
+                asmBuilder.op1("lw", "x" + tempReg, loc.getOffset() + "(sp)");
+            } else if (loc.isGlobal()) {
+                asmBuilder.op1("la", "t3", loc.getName());
+                asmBuilder.op1("lw", "x" + tempReg, "0(t3)");
+            }
+            return tempReg;
+        }
+
+        return tempReg; // 默认返回临时寄存器
+    }
+
+    private int ensureRegister(Location loc) {
+        if (loc.isRegister()) {
+            return loc.getRegister();
+        } else {
+            return 5; // t0作为默认临时寄存器
+        }
     }
 
     private void writeToFile() {
         try (PrintWriter writer = new PrintWriter(new FileWriter(output))) {
-            writer.print(assemblyCode.toString());
+            writer.print(asmBuilder.getBuffer().toString());
         } catch (IOException e) {
             System.err.println("写入输出文件错误: " + e.getMessage());
         }
