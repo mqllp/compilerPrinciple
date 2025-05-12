@@ -1,5 +1,14 @@
+  .data
+  .globl c
+c:
+  .word 0
+
   .text
   .globl main
 main:
+  addi sp, sp, -0
 mainEntry:
-  ret
+  li a0, 666
+  addi sp, sp, 0
+  li a7, 93
+  ecall

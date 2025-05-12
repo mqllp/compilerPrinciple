@@ -20,11 +20,10 @@ public class RegisterAllocator {
         this.stackOffset = 0;
 
         // 初始化可用寄存器 (RISC-V)
-        // a0-a7 (10-17), t0-t6 (5-7, 28-31), s1-s11 (9, 18-27)
-        // 不使用 sp(2), ra(1), s0/fp(8), zero(0), tp(4), gp(3)
+        // 使用 t0-t6 (5-7, 28-31) 和 s2-s11 (18-27) 作为可分配寄存器
+        // 保留 a0-a7 用于函数参数和返回值
+        // 不使用 sp(2), ra(1), s0/fp(8), s1(9), zero(0), tp(4), gp(3)
         for (int i = 5; i <= 7; i++) freeRegisters.add(i);      // t0-t2
-        for (int i = 9; i <= 9; i++) freeRegisters.add(i);      // s1
-        for (int i = 10; i <= 17; i++) freeRegisters.add(i);    // a0-a7
         for (int i = 18; i <= 27; i++) freeRegisters.add(i);    // s2-s11
         for (int i = 28; i <= 31; i++) freeRegisters.add(i);    // t3-t6
     }
@@ -42,10 +41,24 @@ public class RegisterAllocator {
             // 跳过外部函数或声明
             if (LLVMCountBasicBlocks(func) == 0) continue;
 
-            // 为当前函数构建变量的定义和使用信息
-            Map<LLVMValueRef, Integer> defPoints = new HashMap<>();
-            Map<LLVMValueRef, Integer> lastUsePoints = new HashMap<>();
-            int instructionPosition = 0;
+            // 存储每个值的首次出现和最后出现位置
+            Map<LLVMValueRef, Integer> firstOccurrence = new HashMap<>();
+            Map<LLVMValueRef, Integer> lastOccurrence = new HashMap<>();
+            int position = 0;
+
+            // 处理函数参数
+            int paramCount = LLVMCountParams(func);
+            LLVMValueRef[] params = new LLVMValueRef[paramCount];
+            for (int i = 0; i < paramCount; i++) {
+                params[i] = LLVMGetParam(func, i);
+            }
+
+            for (LLVMValueRef param : params) {
+                if (LLVMGetValueName(param).getString() != null &&
+                        !LLVMGetValueName(param).getString().isEmpty()) {
+                    firstOccurrence.put(param, position);
+                }
+            }
 
             // 遍历函数中的每个基本块
             for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func);
@@ -57,41 +70,38 @@ public class RegisterAllocator {
                      inst != null;
                      inst = LLVMGetNextInstruction(inst)) {
 
-                    // 如果指令定义了值（有名称），记录其定义点
+                    // 记录指令定义的值
                     if (LLVMGetValueName(inst).getString() != null &&
                             !LLVMGetValueName(inst).getString().isEmpty()) {
-                        defPoints.put(inst, instructionPosition);
+                        firstOccurrence.putIfAbsent(inst, position);
                     }
 
-                    // 检查所有操作数的使用
+                    // 记录操作数的使用
                     int numOperands = LLVMGetNumOperands(inst);
                     for (int i = 0; i < numOperands; i++) {
                         LLVMValueRef operand = LLVMGetOperand(inst, i);
-
-                        // 只关注具有名称的值（变量）
                         if (operand != null &&
                                 LLVMGetValueName(operand).getString() != null &&
                                 !LLVMGetValueName(operand).getString().isEmpty()) {
 
-                            lastUsePoints.put(operand, instructionPosition);
+                            // 记录首次出现
+                            firstOccurrence.putIfAbsent(operand, position);
+                            // 更新最后出现
+                            lastOccurrence.put(operand, position);
                         }
                     }
 
-                    instructionPosition++;
+                    position++;
                 }
             }
 
-            // 根据定义点和最后使用点构建存活区间
-            for (Map.Entry<LLVMValueRef, Integer> entry : defPoints.entrySet()) {
+            // 创建存活区间
+            for (Map.Entry<LLVMValueRef, Integer> entry : firstOccurrence.entrySet()) {
                 LLVMValueRef value = entry.getKey();
                 int start = entry.getValue();
+                // 如果没有使用记录，则生命周期只有定义点一个位置
+                int end = lastOccurrence.getOrDefault(value, start) + 1;
 
-                // 如果有使用记录，end为最后使用点+1；否则为定义点+1
-                int end = lastUsePoints.containsKey(value) ?
-                        lastUsePoints.get(value) + 1 :
-                        start + 1;
-
-                // 创建存活区间
                 String name = LLVMGetValueName(value).getString();
                 LiveInterval interval = new LiveInterval(value, name, start, end);
                 intervals.add(interval);
@@ -114,80 +124,85 @@ public class RegisterAllocator {
             // 释放已结束的区间占用的寄存器
             expireOldIntervals(interval);
 
-            if (active.size() == freeRegisters.size()) {
-                // 所有寄存器已用完，执行溢出
+            if (active.size() >= freeRegisters.size()) {
+                // 没有足够的寄存器，需要溢出
                 spillAtInterval(interval);
             } else {
                 // 分配一个空闲寄存器
                 int reg = freeRegisters.iterator().next();
                 freeRegisters.remove(reg);
 
-                // 将寄存器分配给当前区间
+                // 记录分配
                 Location location = new Location(reg);
                 interval.setLocation(location);
                 allocations.put(interval.getValue(), location);
 
-                // 将区间加入活跃集合，并按结束点排序
+                // 加入活跃集合
                 active.add(interval);
+                // 按结束点排序
                 active.sort(LiveInterval::compareEndPoint);
             }
         }
     }
 
     // 辅助函数: 释放已结束的区间
-    private void expireOldIntervals(LiveInterval i) {
+    private void expireOldIntervals(LiveInterval current) {
+        // 创建迭代器以便安全移除元素
         Iterator<LiveInterval> iterator = active.iterator();
+
+        // 遍历当前活跃的所有区间
         while (iterator.hasNext()) {
-            LiveInterval j = iterator.next();
+            LiveInterval interval = iterator.next();
 
-            // 如果j结束点大于等于i开始点，则j仍存活
-            if (j.getEnd() >= i.getStart()) {
-                return;
+            // 如果区间结束点大于等于当前区间的开始点，表示仍然存活
+            if (interval.getEnd() > current.getStart()) {
+                break; // 因为active已按结束点排序，后续区间也都还存活
             }
 
-            // j已结束，释放它的寄存器
-            if (j.getLocation().isRegister()) {
-                freeRegisters.add(j.getLocation().getRegister());
+            // 区间已结束，释放其寄存器
+            if (interval.getLocation().isRegister()) {
+                freeRegisters.add(interval.getLocation().getRegister());
             }
+
+            // 从活跃集合中移除
             iterator.remove();
         }
     }
 
     // 辅助函数: 处理溢出
-    private void spillAtInterval(LiveInterval i) {
-        // 获取活跃集合中结束点最远的区间
+    private void spillAtInterval(LiveInterval current) {
+        // 找到活跃集合中结束点最远的区间（最后一个元素）
         LiveInterval spill = active.get(active.size() - 1);
 
-        if (spill.getEnd() > i.getEnd()) {
-            // spill结束点更远，让i使用spill的寄存器
-            Location spillLocation = spill.getLocation();
-            int register = spillLocation.getRegister();
+        if (spill.getEnd() > current.getEnd()) {
+            // 如果spill的结束点更远，则让current使用spill的寄存器
+            int register = spill.getLocation().getRegister();
 
-            // 为spill分配栈空间
+            // 为spill分配栈位置
             stackOffset -= WORD_SIZE;
-            Location stackLocation = new Location(stackOffset, true);
-            spill.setLocation(stackLocation);
-            allocations.put(spill.getValue(), stackLocation);
+            Location stackLoc = new Location(stackOffset, true);
+            spill.setLocation(stackLoc);
+            allocations.put(spill.getValue(), stackLoc);
 
-            // i使用spill的寄存器
-            Location regLocation = new Location(register);
-            i.setLocation(regLocation);
-            allocations.put(i.getValue(), regLocation);
+            // 将寄存器分配给current
+            Location regLoc = new Location(register);
+            current.setLocation(regLoc);
+            allocations.put(current.getValue(), regLoc);
 
             // 更新活跃集合
             active.remove(spill);
-            active.add(i);
+            active.add(current);
             active.sort(LiveInterval::compareEndPoint);
         } else {
-            // i结束点更远，直接将i溢出到栈
+            // current结束点更远，直接将current分配到栈上
             stackOffset -= WORD_SIZE;
-            Location stackLocation = new Location(stackOffset, true);
-            i.setLocation(stackLocation);
-            allocations.put(i.getValue(), stackLocation);
+            Location stackLoc = new Location(stackOffset, true);
+            current.setLocation(stackLoc);
+            allocations.put(current.getValue(), stackLoc);
         }
     }
 
-    // 获取分配位置
+    // 获取变量的分配位置
     public Location getLocation(LLVMValueRef value) {
         return allocations.get(value);
     }
@@ -199,6 +214,6 @@ public class RegisterAllocator {
 
     // 获取栈空间大小
     public int getStackSize() {
-        return -stackOffset;
+        return Math.abs(stackOffset);
     }
 }

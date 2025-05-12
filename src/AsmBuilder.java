@@ -14,7 +14,11 @@ public class AsmBuilder {
     }
 
     public void op2(String op, String dest, String lhs, String rhs) {
-        buffer.append(String.format("  %s %s, %s, %s\n", op, dest, lhs, rhs));
+        if (rhs != null && !rhs.isEmpty()) {
+            buffer.append(String.format("  %s %s, %s, %s\n", op, dest, lhs, rhs));
+        } else {
+            buffer.append(String.format("  %s %s, %s\n", op, dest, lhs));
+        }
     }
 
     public void op1(String op, String dest, String lhs) {

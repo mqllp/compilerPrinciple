@@ -101,15 +101,14 @@ public class RISCVGenerator {
         stackSize = (stackSize + 15) & ~15; // 16字节对齐
         funcStackSize.put(funcName, stackSize);
 
-        // 保存返回地址和帧指针
-        if (stackSize > 0) {
-            asmBuilder.op2("addi", "sp", "sp", "-" + stackSize);
-            asmBuilder.op2("sw", "ra", stackSize - 4 + "(sp)", "sp");
-            asmBuilder.op2("sw", "s0", stackSize - 8 + "(sp)", "sp");
-            asmBuilder.op2("addi", "s0", "sp", String.valueOf(stackSize));
+        // 即使栈大小为0也生成指令
+        asmBuilder.op2("addi", "sp", "sp", "-" + stackSize);
 
-            // 保存被调用者保存的寄存器（如有必要）
-            // ...
+        // 如果有栈空间需要保存返回地址和帧指针
+        if (stackSize > 0) {
+            asmBuilder.op2("sw", "ra", stackSize - 4 + "(sp)", "");
+            asmBuilder.op2("sw", "s0", stackSize - 8 + "(sp)", "");
+            asmBuilder.op2("addi", "s0", "sp", String.valueOf(stackSize));
         }
     }
 
@@ -118,14 +117,20 @@ public class RISCVGenerator {
 
         if (stackSize > 0) {
             // 恢复被调用者保存的寄存器（如有必要）
-            // ...
-
             asmBuilder.op1("lw", "ra", stackSize - 4 + "(sp)");
             asmBuilder.op1("lw", "s0", stackSize - 8 + "(sp)");
-            asmBuilder.op2("addi", "sp", "sp", String.valueOf(stackSize));
         }
 
-        asmBuilder.op("ret");
+        // 释放栈空间
+        asmBuilder.op2("addi", "sp", "sp", String.valueOf(stackSize));
+
+        // main函数特殊处理 - 使用ecall而不是ret
+        if (funcName.equals("main")) {
+            asmBuilder.op1("li", "a7", "93");  // exit系统调用号
+            asmBuilder.op("ecall");
+        } else {
+            asmBuilder.op("ret");
+        }
     }
 
     private void generateBasicBlocks(LLVMValueRef func) {
@@ -143,30 +148,42 @@ public class RISCVGenerator {
                  inst != null;
                  inst = LLVMGetNextInstruction(inst)) {
 
-                generateInstruction(inst);
+
 
                 // 检查是否是返回指令
+
+                // 在generateBasicBlocks方法中修改处理ret指令的部分
                 if (LLVMGetInstructionOpcode(inst) == LLVMRet) {
                     if (LLVMGetNumOperands(inst) > 0) {
                         // 处理返回值
                         LLVMValueRef retVal = LLVMGetOperand(inst, 0);
-                        Location retLoc = regAllocator.getLocation(retVal);
 
-                        if (retLoc != null) {
-                            if (retLoc.isRegister()) {
-                                asmBuilder.op1("mv", "a0", "x" + retLoc.getRegister());
-                            } else if (retLoc.isStack()) {
-                                asmBuilder.op1("lw", "a0", retLoc.getOffset() + "(sp)");
-                            } else if (retLoc.isGlobal()) {
-                                asmBuilder.op1("la", "t0", retLoc.getName());
-                                asmBuilder.op1("lw", "a0", "0(t0)");
+                        if (LLVMIsConstant(retVal) == 1) {
+                            // 常量返回值
+                            long constVal = LLVMConstIntGetSExtValue(retVal);
+                            asmBuilder.op1("li", "a0", String.valueOf(constVal));
+                        } else {
+                            // 处理变量返回值
+                            Location retLoc = regAllocator.getLocation(retVal);
+                            if (retLoc != null) {
+                                if (retLoc.isRegister()) {
+                                    asmBuilder.op1("mv", "a0", "x" + retLoc.getRegister());
+                                } else if (retLoc.isStack()) {
+                                    asmBuilder.op1("lw", "a0", retLoc.getOffset() + "(sp)");
+                                } else if (retLoc.isGlobal()) {
+                                    asmBuilder.op1("la", "t0", retLoc.getName());
+                                    asmBuilder.op1("lw", "a0", "0(t0)");
+                                }
                             }
                         }
                     }
 
                     // 生成函数结尾
                     generateFunctionEpilog(funcName);
+                    continue; // 跳过下面的generateInstruction调用
                 }
+
+                generateInstruction(inst);
             }
         }
     }
