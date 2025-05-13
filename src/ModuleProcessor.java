@@ -175,7 +175,7 @@ public class ModuleProcessor {
 
         // 处理第一个操作数
         if (registerManager.isConstant(op1)) {
-            op1Reg = "t0";
+            op1Reg = resultReg.equals("t0") ? "t3" : "t0";
             long value = LLVMConstIntGetSExtValue(op1);
             codeGenerator.emit2("li", op1Reg, String.valueOf(value));
         } else {
@@ -185,7 +185,7 @@ public class ModuleProcessor {
 
         // 处理第二个操作数
         if (registerManager.isConstant(op2)) {
-            op2Reg = "t1";
+            op2Reg = resultReg.equals("t1") ? "t4" : "t1";
             long value = LLVMConstIntGetSExtValue(op2);
             codeGenerator.emit2("li", op2Reg, String.valueOf(value));
         } else {
