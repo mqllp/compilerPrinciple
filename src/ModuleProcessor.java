@@ -160,8 +160,8 @@ public class ModuleProcessor {
             String falseLabel = LLVMGetBasicBlockName(LLVMValueAsBasicBlock(falseBlock)).getString();
 
             // 使用RISC-V的条件分支指令
-            codeGenerator.emit2("bnez", condReg, trueLabel);
-            codeGenerator.emit1("j", falseLabel);
+            codeGenerator.emit2("beqz", condReg, trueLabel);  // 如果为0，跳转到假分支
+            codeGenerator.emit1("j", falseLabel);               // 否则跳转到真分支
         }
     }
 

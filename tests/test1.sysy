@@ -1,4 +1,8 @@
-
 int main(){
-    return 8;
+    int a = 666;
+    if (a > 555) {
+        return a;
+    } else {
+        return 222;
+    }
 }

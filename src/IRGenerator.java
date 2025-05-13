@@ -493,21 +493,30 @@ public class IRGenerator extends SysYParserBaseVisitor<LLVMValueRef> {
 
     @Override
     public LLVMValueRef visitNumber(SysYParser.NumberContext ctx) {
-        String numStr = ctx.INTEGER_CONST().getText();
-        int value;
+        String text = ctx.getText();
+        long value;
 
-        if (numStr.startsWith("0x") || numStr.startsWith("0X")) {
+        try {
             // 处理十六进制
-            value = Integer.parseInt(numStr.substring(2), 16);
-        } else if (numStr.length() > 1 && numStr.startsWith("0")) {
+            if (text.startsWith("0x") || text.startsWith("0X")) {
+                value = Long.parseLong(text.substring(2), 16);
+            }
             // 处理八进制
-            value = Integer.parseInt(numStr.substring(1), 8);
-        } else {
+            else if (text.startsWith("0") && text.length() > 1) {
+                value = Long.parseLong(text.substring(1), 8);
+            }
             // 处理十进制
-            value = Integer.parseInt(numStr);
-        }
+            else {
+                value = Long.parseLong(text);
+            }
 
-        return LLVMConstInt(i32Type, value, 0);
+            // 生成LLVM常量值(对于32位整数，超出范围的值会自动截断)
+            return LLVMConstInt(LLVMInt32Type(), value, 0);
+
+        } catch (NumberFormatException e) {
+            System.err.println("无效的数字: " + text);
+            return LLVMConstInt(LLVMInt32Type(), 0, 0);
+        }
     }
 
     @Override
