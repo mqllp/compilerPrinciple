@@ -2,6 +2,11 @@
 public class CodeGenerator {
     private final StringBuilder assemblyCode = new StringBuilder();
 
+    // 在CodeGenerator类中添加安全检查方法
+    private String safeReg(String reg) {
+        return (reg == null || reg.equals("null")) ? "t0" : reg;
+    }
+
     // 生成标签
     public void emitLabel(String label) {
         assemblyCode.append(label).append(":\n");
@@ -25,17 +30,17 @@ public class CodeGenerator {
     // 生成有2个操作数的指令
     public void emit2(String instruction, String op1, String op2) {
         assemblyCode.append("\t").append(instruction)
-                .append(" ").append(op1)
-                .append(", ").append(op2)
+                .append(" ").append(safeReg(op1))
+                .append(", ").append(safeReg(op2))
                 .append("\n");
     }
 
     // 生成有3个操作数的指令
     public void emit3(String instruction, String op1, String op2, String op3) {
         assemblyCode.append("\t").append(instruction)
-                .append(" ").append(op1)
-                .append(", ").append(op2)
-                .append(", ").append(op3)
+                .append(" ").append(safeReg(op1))
+                .append(", ").append(safeReg(op2))
+                .append(", ").append(safeReg(op3))
                 .append("\n");
     }
 

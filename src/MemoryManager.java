@@ -67,4 +67,8 @@ public class MemoryManager {
         }
         return maxOffset + 4; // 确保至少有4字节空间
     }
+
+    public boolean hasOffset(String variable) {
+        return variableOffsets.containsKey(variable);
+    }
 }

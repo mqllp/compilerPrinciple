@@ -181,6 +181,9 @@ public class ModuleProcessor {
         } else {
             String varName = LLVMGetValueName(op1).getString();
             op1Reg = registerManager.get(varName);
+            if (op1Reg == null || op1Reg.equals("null")) {
+                op1Reg = "t0";
+            }
         }
 
         // 处理第二个操作数
@@ -191,6 +194,9 @@ public class ModuleProcessor {
         } else {
             String varName = LLVMGetValueName(op2).getString();
             op2Reg = registerManager.get(varName);
+            if (op2Reg == null || op2Reg.equals("null")) {
+                op2Reg = "t1";
+            }
         }
 
         // 执行操作
