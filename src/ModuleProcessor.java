@@ -183,6 +183,9 @@ public class ModuleProcessor {
             op1Reg = registerManager.get(varName);
             if (op1Reg == null || op1Reg.equals("null")) {
                 op1Reg = "t0";
+                // 从栈上加载变量
+                int offset = memoryManager.getOffset(varName);
+                codeGenerator.emitLoad(op1Reg, offset);
             }
         }
 
@@ -196,6 +199,9 @@ public class ModuleProcessor {
             op2Reg = registerManager.get(varName);
             if (op2Reg == null || op2Reg.equals("null")) {
                 op2Reg = "t1";
+                // 从栈上加载变量
+                int offset = memoryManager.getOffset(varName);
+                codeGenerator.emitLoad(op2Reg, offset);
             }
         }
 

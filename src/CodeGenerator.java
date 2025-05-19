@@ -51,7 +51,10 @@ public class CodeGenerator {
 
     // 生成内存存储指令
     public void emitStore(String reg, int offset) {
-        emit2("sw", reg, offset + "(sp)");
+        assemblyCode.append("\t").append("sw")
+                .append(" ").append(safeReg(reg))
+                .append(", ").append(offset).append("(sp)")
+                .append("\n");
     }
 
     // 生成数据段

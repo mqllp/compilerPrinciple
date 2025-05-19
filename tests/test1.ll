@@ -106,112 +106,122 @@ mainEntry:
 	mv t6, t0
 
 	sw a0, 0(sp)
-	sw t0, 0(sp)
-	lw t0, 0(sp)
-	mv a0, t0
-
+# Spill x1 to stack offset 0
 	sw a1, 4(sp)
-	sw t0, 4(sp)
-	lw t0, 4(sp)
-	mv a1, t0
+# Spill x2 to stack offset 4
+	lw a1, 0(sp)
+# Reload x1 from stack offset 0
+	mv a0, a1
 
-	sw a2, 0(sp)
-	add a2, a0, a1
+	sw a2, 8(sp)
+# Spill x3 to stack offset 8
+	sw a3, 12(sp)
+# Spill x4 to stack offset 12
+	lw a3, 4(sp)
+# Reload x2 from stack offset 4
+	mv a2, a3
 
-	sw t0, 0(sp)
-	sw t0, 0(sp)
-	lw t0, 0(sp)
-	mv t0, t0
+	add a1, a0, a2
 
-	add a0, a2, t1
-
-	mv a1, a3
-
-	add a2, a0, a1
-
+	sw a4, 0(sp)
+# Spill x5 to stack offset 0
+	lw a4, 8(sp)
+# Reload x3 from stack offset 8
 	mv a3, a4
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, a5
+	lw a4, 12(sp)
+# Reload x4 from stack offset 12
+	mv a2, a4
 
-	add a2, a0, a1
+	add a1, a0, a2
+
+	lw a4, 0(sp)
+# Reload x5 from stack offset 0
+	mv a3, a4
+
+	add a0, a1, a3
+
+	mv a2, a5
+
+	add a1, a0, a2
 
 	mv a3, a6
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, a7
+	mv a2, a7
 
-	add a2, a0, a1
+	add a1, a0, a2
 
 	mv a3, s0
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, s1
+	mv a2, s1
 
-	add a2, a0, a1
+	add a1, a0, a2
 
 	mv a3, s2
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, s3
+	mv a2, s3
 
-	add a2, a0, a1
+	add a1, a0, a2
 
 	mv a3, s4
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, s5
+	mv a2, s5
 
-	add a2, a0, a1
+	add a1, a0, a2
 
 	mv a3, s6
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, s7
+	mv a2, s7
 
-	add a2, a0, a1
+	add a1, a0, a2
 
 	mv a3, s8
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, s9
+	mv a2, s9
 
-	add a2, a0, a1
+	add a1, a0, a2
 
 	mv a3, s10
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, s11
+	mv a2, s11
 
-	add a2, a0, a1
+	add a1, a0, a2
 
 	mv a3, t2
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, t3
+	mv a2, t3
 
-	add a2, a0, a1
+	add a1, a0, a2
 
 	mv a3, t4
 
-	add a0, a2, a3
+	add a0, a1, a3
 
-	mv a1, t5
+	mv a2, t5
 
-	add a2, a0, a1
+	add a1, a0, a2
 
 	mv a3, t6
 
-	add a0, a2, a3
+	add a0, a1, a3
 
 	mv a0, a0
 	addi sp, sp, 4

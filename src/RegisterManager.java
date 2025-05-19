@@ -46,17 +46,18 @@ public class RegisterManager {
     }
 
     private String spillAndReallocate(String variable) {
-        // 找出优先级最低的变量
         String victimVar = findLeastRecentlyUsed();
         if (victimVar == null) {
-            // 如果找不到受害者，使用临时寄存器t0
-            return "t0";
+            return "t0"; // 使用临时寄存器
         }
+
         String reg = varToRegMap.remove(victimVar);
+        regPriority.remove(victimVar);
 
         // 将受害者变量保存到栈中
         int offset = memoryManager.allocate(victimVar);
         codeGenerator.emitStore(reg, offset);
+        codeGenerator.emitComment("Spill " + victimVar + " to stack offset " + offset);
 
         // 分配寄存器给新变量
         varToRegMap.put(variable, reg);
@@ -78,11 +79,12 @@ public class RegisterManager {
             return varToRegMap.get(variable);
         }
 
-        // 变量在栈上，需要加载到寄存器
+        // 如果变量不在寄存器中，需要从栈上加载
         String reg = allocate(variable);
         if (memoryManager.hasOffset(variable)) {
             int offset = memoryManager.getOffset(variable);
             codeGenerator.emitLoad(reg, offset);
+            codeGenerator.emitComment("Reload " + variable + " from stack offset " + offset);
         }
         return reg;
     }
