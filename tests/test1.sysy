@@ -4,7 +4,7 @@ int global_var = 1;
 
 int main() {
 
-    int num = global_var;
+    int num = 6;
 
     int c = num;
 
