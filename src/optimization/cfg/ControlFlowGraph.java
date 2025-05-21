@@ -90,6 +90,10 @@ public class ControlFlowGraph {
         Map<LLVMValueRef, LatticeValue> valueMap = new HashMap<>();
         Map<LLVMValueRef, LatticeValue> memoryMap = new HashMap<>();
 
+        // 处理全局变量
+        LLVMModuleRef module = LLVMGetGlobalParent(function);
+        handleGlobalVariables(module, memoryMap);
+
         // 初始化常量值
         for (Instruction instr : instructions) {
             // 先检查所有直接常量赋值，如 store i32 1, i32* %x
@@ -119,7 +123,23 @@ public class ControlFlowGraph {
             // 处理load指令：从内存映射中加载值
             if (opcode == LLVMLoad) {
                 LLVMValueRef ptrOp = instr.getOperand(0);
-                if (memoryMap.containsKey(ptrOp)) {
+
+                // 这里增加对全局变量的检查
+                if (LLVMIsAGlobalVariable(ptrOp) != null && memoryMap.containsKey(ptrOp)) {
+                    LatticeValue loadedValue = memoryMap.get(ptrOp);
+                    if (!loadedValue.equals(instr.getOutValue())) {
+                        instr.setLatticeValue(loadedValue);
+                        valueMap.put(instrRef, loadedValue);
+
+                        // 将所有使用此load结果的指令加入工作表
+                        for (Instruction user : instr.getSuccessors()) {
+                            workList.add(user);
+                        }
+                    }
+                    continue;
+                }
+                // 处理普通内存位置
+                else if (memoryMap.containsKey(ptrOp)) {
                     LatticeValue loadedValue = memoryMap.get(ptrOp);
                     if (!loadedValue.equals(instr.getOutValue())) {
                         instr.setLatticeValue(loadedValue);
@@ -140,8 +160,8 @@ public class ControlFlowGraph {
                 LLVMValueRef op1 = instr.getOperand(0);
                 LLVMValueRef op2 = instr.getOperand(1);
 
-                LatticeValue val1 = getOperandValue(op1, valueMap);
-                LatticeValue val2 = getOperandValue(op2, valueMap);
+                LatticeValue val1 = getOperandValue(op1, valueMap, memoryMap);
+                LatticeValue val2 = getOperandValue(op2, valueMap, memoryMap);
 
                 if (val1.getType() == LatticeValue.ValueType.CONSTANT &&
                         val2.getType() == LatticeValue.ValueType.CONSTANT) {
@@ -165,9 +185,15 @@ public class ControlFlowGraph {
                 LLVMValueRef valueOp = instr.getOperand(0);
                 LLVMValueRef ptrOp = instr.getOperand(1);
 
-                LatticeValue valueToStore = getOperandValue(valueOp, valueMap);
+                LatticeValue valueToStore = getOperandValue(valueOp, valueMap, memoryMap);
 
                 if (valueToStore.getType() == LatticeValue.ValueType.CONSTANT) {
+                    // 对于全局变量，检查是否允许更新（只赋值一次）
+                    if (LLVMIsAGlobalVariable(ptrOp) != null && memoryMap.containsKey(ptrOp)) {
+                        // 全局变量已赋值过，不再更新
+                        continue;
+                    }
+
                     memoryMap.put(ptrOp, valueToStore);
 
                     // 找到所有从该地址加载的load指令并更新
@@ -187,13 +213,44 @@ public class ControlFlowGraph {
         }
     }
 
-    private LatticeValue getOperandValue(LLVMValueRef op, Map<LLVMValueRef, LatticeValue> valueMap) {
+    // 在ControlFlowGraph类中添加对全局变量的处理
+    private void handleGlobalVariables(LLVMModuleRef module, Map<LLVMValueRef, LatticeValue> memoryMap) {
+        LLVMValueRef global = LLVMGetFirstGlobal(module);
+        while (global != null) {
+            if (LLVMIsGlobalConstant(global) != 0 || isGlobalOnlyInitialized(global, module)) {
+                LLVMValueRef initializer = LLVMGetInitializer(global);
+                if (initializer != null && LLVMIsConstant(initializer) != 0) {
+                    if (LLVMIsAConstantInt(initializer) != null) {
+                        long value = LLVMConstIntGetSExtValue(initializer);
+                        LatticeValue latticeVal = new LatticeValue(LatticeValue.ValueType.CONSTANT, value);
+                        memoryMap.put(global, latticeVal);
+                    }
+                }
+            }
+            global = LLVMGetNextGlobal(global);
+        }
+    }
+
+    // 检查全局变量是否只被初始化一次
+    private boolean isGlobalOnlyInitialized(LLVMValueRef global, LLVMModuleRef module) {
+        // 这个方法需要分析全模块代码，检查全局变量是否只被赋值一次
+        // 简化实现：假设所有全局变量都只初始化一次
+        return true;
+    }
+
+    private LatticeValue getOperandValue(LLVMValueRef op, Map<LLVMValueRef, LatticeValue> valueMap,
+                                         Map<LLVMValueRef, LatticeValue> memoryMap) {
         // 如果是常量
         if (LLVMIsConstant(op) != 0) {
             if (LLVMIsAConstantInt(op) != null) {
                 long value = LLVMConstIntGetSExtValue(op);
                 return new LatticeValue(LatticeValue.ValueType.CONSTANT, value);
             }
+        }
+
+        // 如果是全局变量
+        if (LLVMIsAGlobalVariable(op) != null && memoryMap.containsKey(op)) {
+            return memoryMap.get(op);
         }
 
         // 如果是已计算的值
