@@ -15,8 +15,8 @@ public class Main {
             return;
         }
         String inputFile = args[0];
-        String riscvFile = args[1];
-        String outputFile = riscvFile + ".ll"; // RISC-V汇编文件名
+        String outputFile = args[1];
+        String riscvFile = outputFile + ".sc"; // RISC-V汇编文件名
 
         // 初始化LLVM
         LLVMInitializeCore(LLVMGetGlobalPassRegistry());
