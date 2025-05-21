@@ -1,3 +1,4 @@
+import optimization.IROptimizer;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
@@ -39,6 +40,10 @@ public class Main {
         // 生成IR
         IRGenerator generator = new IRGenerator(module, builder);
         generator.visit(tree);
+
+        // 添加IR优化步骤
+        IROptimizer optimizer = new IROptimizer();
+        module = optimizer.optimize(module);
 
         // 输出IR到文件
         BytePointer error = new BytePointer();

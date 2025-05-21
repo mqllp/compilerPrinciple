@@ -4,6 +4,7 @@
 !/src/*.java
 !/src/**/*.java
 !/src/*.g4
+!/src/optimization/
 /src/*Lexer.java
 /labDescribition
 /src/*Parser.java 
