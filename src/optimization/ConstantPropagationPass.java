@@ -26,9 +26,13 @@ public class ConstantPropagationPass implements OptimizationPass {
 
                 // 获取常量结果并应用优化
                 Map<LLVMValueRef, LatticeValue> constants = cfg.getConstantValues();
+
+                // 进行常量替换和优化
                 if (!constants.isEmpty()) {
                     changed = true;
-                    applyConstantOptimization(constants);
+                    System.out.println("找到" + constants.size() + "个可优化的常量指令");
+                    applyConstantOptimization(function, constants);
+                    simplifyReturnStatements(function, cfg);
                 }
             }
 
@@ -38,21 +42,107 @@ public class ConstantPropagationPass implements OptimizationPass {
         return module;
     }
 
-    private void applyConstantOptimization(Map<LLVMValueRef, LatticeValue> constants) {
-        // 对于每个被识别为常量的指令，用常量值替换其使用
+    private void applyConstantOptimization(LLVMValueRef function, Map<LLVMValueRef, LatticeValue> constants) {
+        LLVMContextRef context = LLVMGetModuleContext(LLVMGetGlobalParent(function));
+        LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+
+        // 逐个替换常量
         for (Map.Entry<LLVMValueRef, LatticeValue> entry : constants.entrySet()) {
             LLVMValueRef instruction = entry.getKey();
             LatticeValue value = entry.getValue();
 
+            // 只处理确定是常量的指令
             if (value.getType() == LatticeValue.ValueType.CONSTANT) {
                 // 创建常量值
-                LLVMContextRef context = LLVMGetModuleContext(LLVMGetGlobalParent(instruction));
                 LLVMValueRef constValue = LLVMConstInt(LLVMInt32Type(), value.getConstantValue(), 0);
 
-                // 替换所有使用该指令的地方为常量值
+                // 替换所有使用
                 LLVMReplaceAllUsesWith(instruction, constValue);
+
+                // 如果不是终结指令，可以考虑删除该指令
+                if (LLVMGetInstructionOpcode(instruction) != LLVMRet &&
+                        LLVMGetInstructionOpcode(instruction) != LLVMBr) {
+                    // 检查指令是否可以安全删除
+                    if (LLVMGetFirstUse(instruction) == null) {
+                        LLVMInstructionEraseFromParent(instruction);
+                    }
+                }
             }
         }
+
+        // 优化返回语句
+        LLVMBasicBlockRef block = LLVMGetFirstBasicBlock(function);
+        while (block != null) {
+            LLVMValueRef instr = LLVMGetFirstInstruction(block);
+            while (instr != null) {
+                LLVMValueRef nextInstr = LLVMGetNextInstruction(instr);
+
+                if (LLVMGetInstructionOpcode(instr) == LLVMRet) {
+                    // 如果返回指令有操作数
+                    if (LLVMGetNumOperands(instr) > 0) {
+                        LLVMValueRef retVal = LLVMGetOperand(instr, 0);
+
+                        // 如果返回值是常量表达式
+                        if (constants.containsKey(retVal) &&
+                                constants.get(retVal).getType() == LatticeValue.ValueType.CONSTANT) {
+                            // 创建新的常量返回
+                            LLVMPositionBuilderAtEnd(builder, block);
+                            LLVMValueRef constVal = LLVMConstInt(LLVMInt32Type(),
+                                    constants.get(retVal).getConstantValue(), 0);
+                            LLVMValueRef newRet = LLVMBuildRet(builder, constVal);
+
+                            // 删除旧的返回指令
+                            LLVMInstructionEraseFromParent(instr);
+                        }
+                        // 直接常量返回值
+                        else if (LLVMIsConstant(retVal) != 0 && LLVMIsAConstantInt(retVal) != null) {
+                            // 已经是常量返回，不需要修改
+                        }
+                    }
+                }
+
+                instr = nextInstr;
+            }
+
+            block = LLVMGetNextBasicBlock(block);
+        }
+
+        LLVMDisposeBuilder(builder);
+    }
+
+    private void simplifyReturnStatements(LLVMValueRef function, ControlFlowGraph cfg) {
+        LLVMContextRef context = LLVMGetModuleContext(LLVMGetGlobalParent(function));
+        LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+
+        for (Instruction instr : cfg.getAllInstructions()) {
+            if (LLVMGetInstructionOpcode(instr.getLlvmInstruction()) == LLVMRet) {
+                // 检查返回值是否是常量
+                if (instr.getNumOperands() > 0) {
+                    LLVMValueRef returnValue = instr.getOperand(0);
+
+                    // 如果返回值是常量，直接替换整个返回语句
+                    if (LLVMIsConstant(returnValue) != 0) {
+                        // 生成新的返回指令
+                        LLVMPositionBuilderBefore(builder, instr.getLlvmInstruction());
+                        LLVMBuildRet(builder, returnValue);
+                        LLVMInstructionEraseFromParent(instr.getLlvmInstruction());
+                    }
+                    // 如果我们可以计算出返回值是常量
+                    else if (LLVMIsAInstruction(returnValue) != null) {
+                        LatticeValue computedValue = instr.getInValue();
+                        if (computedValue != null && computedValue.getType() == LatticeValue.ValueType.CONSTANT) {
+                            Long constValue = computedValue.getConstantValue();
+                            LLVMValueRef constRetVal = LLVMConstInt(LLVMInt32Type(), constValue, 0);
+                            LLVMPositionBuilderBefore(builder, instr.getLlvmInstruction());
+                            LLVMBuildRet(builder, constRetVal);
+                            LLVMInstructionEraseFromParent(instr.getLlvmInstruction());
+                        }
+                    }
+                }
+            }
+        }
+
+        LLVMDisposeBuilder(builder);
     }
 
     @Override

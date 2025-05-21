@@ -82,42 +82,136 @@ public class ControlFlowGraph {
         }
     }
 
+
+
     public void runConstantPropagation() {
         // 工作表算法实现常量传播
-        Queue<Instruction> workList = new LinkedList<>(instructions);
+        Queue<Instruction> workList = new LinkedList<>();
         Map<LLVMValueRef, LatticeValue> valueMap = new HashMap<>();
+        Map<LLVMValueRef, LatticeValue> memoryMap = new HashMap<>();
 
-        // 初始化所有指令的格值为UNDEF
+        // 初始化常量值
         for (Instruction instr : instructions) {
+            // 先检查所有直接常量赋值，如 store i32 1, i32* %x
+            if (LLVMGetInstructionOpcode(instr.getLlvmInstruction()) == LLVMStore) {
+                LLVMValueRef valueOp = instr.getOperand(0);
+                LLVMValueRef ptrOp = instr.getOperand(1);
+
+                if (LLVMIsConstant(valueOp) != 0) {
+                    if (LLVMIsAConstantInt(valueOp) != null) {
+                        long constVal = LLVMConstIntGetSExtValue(valueOp);
+                        memoryMap.put(ptrOp, new LatticeValue(LatticeValue.ValueType.CONSTANT, constVal));
+                    }
+                }
+            }
+
+            // 初始化指令格值
             instr.setLatticeValue(new LatticeValue());
+            workList.add(instr);
         }
 
+        // 固定点迭代
         while (!workList.isEmpty()) {
             Instruction instr = workList.poll();
-            LatticeValue oldValue = instr.getOutValue();
-            LatticeValue newValue = instr.evaluate();
+            LLVMValueRef instrRef = instr.getLlvmInstruction();
+            int opcode = LLVMGetInstructionOpcode(instrRef);
 
-            if (!oldValue.equals(newValue)) {
-                instr.setLatticeValue(newValue);
+            // 处理load指令：从内存映射中加载值
+            if (opcode == LLVMLoad) {
+                LLVMValueRef ptrOp = instr.getOperand(0);
+                if (memoryMap.containsKey(ptrOp)) {
+                    LatticeValue loadedValue = memoryMap.get(ptrOp);
+                    if (!loadedValue.equals(instr.getOutValue())) {
+                        instr.setLatticeValue(loadedValue);
+                        valueMap.put(instrRef, loadedValue);
 
-                // 将所有受影响的指令加入工作表
-                for (Instruction succ : instr.getSuccessors()) {
-                    workList.add(succ);
+                        // 将所有使用此load结果的指令加入工作表
+                        for (Instruction user : instr.getSuccessors()) {
+                            workList.add(user);
+                        }
+                    }
+                    continue;
                 }
+            }
 
-                // 更新变量值映射
-                valueMap.put(instr.getLlvmInstruction(), newValue);
+            // 处理二元运算指令
+            if (opcode == LLVMAdd || opcode == LLVMSub || opcode == LLVMMul ||
+                    opcode == LLVMSDiv || opcode == LLVMSRem) {
+                LLVMValueRef op1 = instr.getOperand(0);
+                LLVMValueRef op2 = instr.getOperand(1);
 
-                // 更新依赖指令的变量值
-                for (Instruction dependent : instructions) {
-                    for (int i = 0; i < dependent.getNumOperands(); i++) {
-                        LLVMValueRef operand = dependent.getOperand(i);
-                        if (operand == instr.getLlvmInstruction()) {
-                            dependent.updateVariableValue(operand, newValue);
+                LatticeValue val1 = getOperandValue(op1, valueMap);
+                LatticeValue val2 = getOperandValue(op2, valueMap);
+
+                if (val1.getType() == LatticeValue.ValueType.CONSTANT &&
+                        val2.getType() == LatticeValue.ValueType.CONSTANT) {
+                    long result = computeConstantResult(opcode, val1.getConstantValue(), val2.getConstantValue());
+                    LatticeValue newValue = new LatticeValue(LatticeValue.ValueType.CONSTANT, result);
+
+                    if (!newValue.equals(instr.getOutValue())) {
+                        instr.setLatticeValue(newValue);
+                        valueMap.put(instrRef, newValue);
+
+                        for (Instruction user : instr.getSuccessors()) {
+                            workList.add(user);
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            // 处理store指令：更新内存映射
+            if (opcode == LLVMStore) {
+                LLVMValueRef valueOp = instr.getOperand(0);
+                LLVMValueRef ptrOp = instr.getOperand(1);
+
+                LatticeValue valueToStore = getOperandValue(valueOp, valueMap);
+
+                if (valueToStore.getType() == LatticeValue.ValueType.CONSTANT) {
+                    memoryMap.put(ptrOp, valueToStore);
+
+                    // 找到所有从该地址加载的load指令并更新
+                    for (Instruction loadInstr : instructions) {
+                        if (LLVMGetInstructionOpcode(loadInstr.getLlvmInstruction()) == LLVMLoad) {
+                            if (ptrOp.equals(loadInstr.getOperand(0))) {
+                                if (!valueToStore.equals(loadInstr.getOutValue())) {
+                                    loadInstr.setLatticeValue(valueToStore);
+                                    valueMap.put(loadInstr.getLlvmInstruction(), valueToStore);
+                                    workList.add(loadInstr);
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    private LatticeValue getOperandValue(LLVMValueRef op, Map<LLVMValueRef, LatticeValue> valueMap) {
+        // 如果是常量
+        if (LLVMIsConstant(op) != 0) {
+            if (LLVMIsAConstantInt(op) != null) {
+                long value = LLVMConstIntGetSExtValue(op);
+                return new LatticeValue(LatticeValue.ValueType.CONSTANT, value);
+            }
+        }
+
+        // 如果是已计算的值
+        if (valueMap.containsKey(op)) {
+            return valueMap.get(op);
+        }
+
+        return new LatticeValue();
+    }
+
+    private long computeConstantResult(int opcode, long val1, long val2) {
+        switch (opcode) {
+            case LLVMAdd: return val1 + val2;
+            case LLVMSub: return val1 - val2;
+            case LLVMMul: return val1 * val2;
+            case LLVMSDiv: return val2 != 0 ? val1 / val2 : 0;
+            case LLVMSRem: return val2 != 0 ? val1 % val2 : 0;
+            default: return 0;
         }
     }
 
