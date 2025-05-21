@@ -1,6 +1,11 @@
-int global_var = 1;
 int main() {
     int num = 1;
-    int c = num;
-    return num * num + c;
+    while (num < 10) {
+        num = num + 1;
+    }
+    int result = num;
+    int a = 2;
+    int c = a;
+    return result;
+
 }

@@ -42,6 +42,14 @@ public class ConstantPropagationPass implements OptimizationPass {
         return module;
     }
 
+    // 检查指令是否在循环体内
+    private boolean isInLoopBody(LLVMValueRef instruction) {
+        // 通过基本块名称检查指令是否在循环体内
+        LLVMBasicBlockRef block = LLVMGetInstructionParent(instruction);
+        String blockName = LLVMGetBasicBlockName(block).getString().toLowerCase();
+        return blockName.contains("loop") || blockName.contains("while");
+    }
+
     private void applyConstantOptimization(LLVMValueRef function, Map<LLVMValueRef, LatticeValue> constants) {
         LLVMContextRef context = LLVMGetModuleContext(LLVMGetGlobalParent(function));
         LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
@@ -52,7 +60,7 @@ public class ConstantPropagationPass implements OptimizationPass {
             LatticeValue value = entry.getValue();
 
             // 只处理确定是常量的指令
-            if (value.getType() == LatticeValue.ValueType.CONSTANT) {
+            if (value.getType() == LatticeValue.ValueType.CONSTANT  && !isInLoopBody(instruction)) {
                 // 创建常量值
                 LLVMValueRef constValue = LLVMConstInt(LLVMInt32Type(), value.getConstantValue(), 0);
 

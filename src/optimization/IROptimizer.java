@@ -31,6 +31,7 @@ public class IROptimizer {
                 }
             }
 
+            /*
             // 然后运行未使用变量消除
             for (OptimizationPass pass : passes) {
                 if (pass instanceof UnusedVarEliminationPass) {
@@ -38,6 +39,16 @@ public class IROptimizer {
                     changed |= pass.hasChanged();
                 }
             }
+
+            // 最后运行死代码消除
+            for (OptimizationPass pass : passes) {
+                if (pass instanceof DeadCodeEliminationPass) {
+                    module = pass.run(module);
+                    changed |= pass.hasChanged();
+                }
+            }
+
+             */
         }
 
         return module;

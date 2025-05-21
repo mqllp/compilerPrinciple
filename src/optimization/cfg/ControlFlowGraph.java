@@ -90,6 +90,9 @@ public class ControlFlowGraph {
         Map<LLVMValueRef, LatticeValue> valueMap = new HashMap<>();
         Map<LLVMValueRef, LatticeValue> memoryMap = new HashMap<>();
 
+        // 新增：跟踪内存位置被写入的次数
+        Map<LLVMValueRef, Integer> memoryWriteCount = new HashMap<>();
+
         // 处理全局变量
         LLVMModuleRef module = LLVMGetGlobalParent(function);
         handleGlobalVariables(module, memoryMap);
@@ -160,6 +163,14 @@ public class ControlFlowGraph {
                 LLVMValueRef op1 = instr.getOperand(0);
                 LLVMValueRef op2 = instr.getOperand(1);
 
+                // 检查操作数是否来自循环变量的加载
+                if (isLoopVariable(op1, memoryWriteCount) || isLoopVariable(op2, memoryWriteCount)) {
+                    LatticeValue nacValue = new LatticeValue(LatticeValue.ValueType.NAC, null);
+                    instr.setLatticeValue(nacValue);
+                    valueMap.put(instrRef, nacValue);
+                    continue;
+                }
+
                 LatticeValue val1 = getOperandValue(op1, valueMap, memoryMap);
                 LatticeValue val2 = getOperandValue(op2, valueMap, memoryMap);
 
@@ -184,6 +195,36 @@ public class ControlFlowGraph {
             if (opcode == LLVMStore) {
                 LLVMValueRef valueOp = instr.getOperand(0);
                 LLVMValueRef ptrOp = instr.getOperand(1);
+
+                // 跟踪内存位置的写入次数
+                int writeCount = memoryWriteCount.getOrDefault(ptrOp, 0) + 1;
+                memoryWriteCount.put(ptrOp, writeCount);
+
+                // 检测循环变量 - 修复语法和逻辑
+                if (writeCount > 1) {
+                    // 如果是全局变量，检查是否可以更新
+                    if (LLVMIsAGlobalVariable(ptrOp) != null) {
+                        // 全局变量的特殊处理保持不变
+                    } else {
+                        // 局部变量被多次写入，必须标记为NAC
+                        LatticeValue nacValue = new LatticeValue(LatticeValue.ValueType.NAC, null);
+                        memoryMap.put(ptrOp, nacValue);
+
+                        // 更新所有从该地址加载的load指令
+                        for (Instruction loadInstr : instructions) {
+                            if (LLVMGetInstructionOpcode(loadInstr.getLlvmInstruction()) == LLVMLoad &&
+                                    ptrOp.equals(loadInstr.getOperand(0))) {
+                                loadInstr.setLatticeValue(nacValue);
+                                valueMap.put(loadInstr.getLlvmInstruction(), nacValue);
+                                workList.add(loadInstr);
+
+                                // 传播NAC值到所有使用此load结果的指令
+                                propagateNACToUsers(loadInstr, valueMap, workList);
+                            }
+                        }
+                        continue;
+                    }
+                }
 
                 LatticeValue valueToStore = getOperandValue(valueOp, valueMap, memoryMap);
 
@@ -211,6 +252,27 @@ public class ControlFlowGraph {
                 }
             }
         }
+    }
+
+    // 新增辅助方法用于传播NAC值到所有使用者
+    private void propagateNACToUsers(Instruction instr, Map<LLVMValueRef, LatticeValue> valueMap,
+                                     Queue<Instruction> workList) {
+        LatticeValue nacValue = new LatticeValue(LatticeValue.ValueType.NAC, null);
+        for (Instruction user : instr.getSuccessors()) {
+            user.setLatticeValue(nacValue);
+            valueMap.put(user.getLlvmInstruction(), nacValue);
+            workList.add(user);
+        }
+    }
+
+    // 判断是否是循环变量
+    private boolean isLoopVariable(LLVMValueRef op, Map<LLVMValueRef, Integer> writeCountMap) {
+        // 检查是否为多次写入的内存地址
+        if (LLVMIsALoadInst(op) != null) {
+            LLVMValueRef ptr = LLVMGetOperand(op, 0);
+            return writeCountMap.getOrDefault(ptr, 0) > 1;
+        }
+        return false;
     }
 
     // 在ControlFlowGraph类中添加对全局变量的处理

@@ -17,6 +17,5 @@
     <orderEntry type="library" name="llvm-platform-13.0.1-1.5.7" level="project" />
     <orderEntry type="library" name="llvm4j-0.1.2-SNAPSHOT" level="project" />
     <orderEntry type="library" name="kotlin-stdlib-1.9.0" level="project" />
-    <orderEntry type="library" name="rars" level="project" />
   </component>
 </module>
