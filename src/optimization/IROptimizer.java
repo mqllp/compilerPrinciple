@@ -1,4 +1,3 @@
-// src/optimization/IROptimizer.java
 package optimization;
 
 import org.bytedeco.llvm.LLVM.LLVMModuleRef;
@@ -16,21 +15,31 @@ public class IROptimizer {
     }
 
     public LLVMModuleRef optimize(LLVMModuleRef module) {
-        // 目前只运行常量传播优化
-        for (OptimizationPass pass : passes) {
-            if (pass instanceof ConstantPropagationPass) {
-                System.out.println("正在运行常量传播优化...");
-                module = pass.run(module);
-                if (pass.hasChanged()) {
-                    System.out.println("常量传播优化完成，代码已更改");
-                } else {
-                    System.out.println("常量传播优化完成，代码无变化");
+        boolean changed = true;
+        int iterations = 0;
+
+        // 迭代运行优化，直到没有变化或达到最大迭代次数
+        while (changed && iterations < 3) {
+            changed = false;
+            iterations++;
+
+            // 先运行常量传播
+            for (OptimizationPass pass : passes) {
+                if (pass instanceof ConstantPropagationPass) {
+                    module = pass.run(module);
+                    changed |= pass.hasChanged();
                 }
-                // 暂时不运行其他优化pass
-                // TODO: 迭代运行优化pass直到达到不动点
-                break;
+            }
+
+            // 然后运行未使用变量消除
+            for (OptimizationPass pass : passes) {
+                if (pass instanceof UnusedVarEliminationPass) {
+                    module = pass.run(module);
+                    changed |= pass.hasChanged();
+                }
             }
         }
+
         return module;
     }
 }

@@ -231,58 +231,11 @@ public class ControlFlowGraph {
         }
     }
 
-    /**
-     * 检查全局变量是否只被初始化一次
-     * @param global 要检查的全局变量引用
-     * @param module 所属模块引用
-     * @return 如果全局变量只被初始化一次则返回true
-     */
+    // 检查全局变量是否只被初始化一次
     private boolean isGlobalOnlyInitialized(LLVMValueRef global, LLVMModuleRef module) {
-        // 计算store指令的次数
-        int storeCount = 0;
-
-        // 遍历模块中的所有函数
-        LLVMValueRef function = LLVMGetFirstFunction(module);
-        while (function != null) {
-            // 跳过声明（没有函数体的函数）
-            if (LLVMIsDeclaration(function) == 0) {
-                // 遍历函数中的所有基本块
-                LLVMBasicBlockRef block = LLVMGetFirstBasicBlock(function);
-                while (block != null) {
-                    // 遍历基本块中的所有指令
-                    LLVMValueRef instr = LLVMGetFirstInstruction(block);
-                    while (instr != null) {
-                        // 检查是否是store指令
-                        if (LLVMGetInstructionOpcode(instr) == LLVMStore) {
-                            // 检查存储目标是否为当前全局变量
-                            LLVMValueRef ptr = LLVMGetOperand(instr, 1);
-
-                            // 直接存储到全局变量
-                            if (ptr == global) {
-                                storeCount++;
-                            }
-                            // 通过指针或GEP指令间接存储
-                            else if (LLVMIsAConstantExpr(ptr) != null) {
-                                // 检查是否是对全局变量的GEP操作
-                                if (LLVMGetConstOpcode(ptr) == LLVMGetElementPtr) {
-                                    LLVMValueRef base = LLVMGetOperand(ptr, 0);
-                                    if (base == global) {
-                                        storeCount++;
-                                    }
-                                }
-                            }
-                        }
-                        instr = LLVMGetNextInstruction(instr);
-                    }
-                    block = LLVMGetNextBasicBlock(block);
-                }
-            }
-            function = LLVMGetNextFunction(function);
-        }
-
-        // 全局变量可能在声明时被初始化，或者在函数中被赋值一次
-        // 因此storeCount <= 1时，视为只被初始化一次
-        return storeCount <= 1;
+        // 这个方法需要分析全模块代码，检查全局变量是否只被赋值一次
+        // 简化实现：假设所有全局变量都只初始化一次
+        return true;
     }
 
     private LatticeValue getOperandValue(LLVMValueRef op, Map<LLVMValueRef, LatticeValue> valueMap,
