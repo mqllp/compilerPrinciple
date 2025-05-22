@@ -1,11 +1,11 @@
+int global_var = 1;
 int main() {
     int num = 1;
-    while (num < 10) {
-        num = num + 1;
+    int c = global_var + 13;
+    if (num == 1) {
+        num = 8;
+    }else {
+        num = 0;
     }
-    int result = num;
-    int a = 2;
-    int c = a;
-    return result;
-
+    return num * num + c;
 }

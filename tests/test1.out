@@ -1,0 +1,32 @@
+; ModuleID = 'module'
+source_filename = "module"
+
+@global_var = global i32 1
+
+define i32 @main() {
+mainEntry:
+  %num = alloca i32, align 4
+  store i32 1, i32* %num, align 4
+  %c = alloca i32, align 4
+  store i32 14, i32* %c, align 4
+  %num1 = load i32, i32* %num, align 4
+  %eq = icmp eq i32 %num1, 1
+  %eqtmp = zext i1 %eq to i32
+  %ifcond = icmp ne i32 %eqtmp, 0
+  br i1 %ifcond, label %then, label %else
+
+then:                                             ; preds = %mainEntry
+  store i32 8, i32* %num, align 4
+  br label %ifcont
+
+else:                                             ; preds = %mainEntry
+  store i32 0, i32* %num, align 4
+  br label %ifcont
+
+ifcont:                                           ; preds = %else, %then
+  %num11 = load i32, i32* %num, align 4
+  %num12 = load i32, i32* %num, align 4
+  %multmp = mul i32 %num11, %num12
+  %addtmp3 = add i32 %multmp, 14
+  ret i32 %addtmp3
+}
